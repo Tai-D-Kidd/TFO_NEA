@@ -18,7 +18,7 @@
 
 
   <script>
-    
+    let friendMarkers = [];
     const startLat = {{ user.latitude|default(0, true) }};
     const startLon = {{ user.longitude|default(0, true) }};
     const map = L.map('map').setView([startLat, startLon], 13);
@@ -33,6 +33,20 @@
         .addTo(map)
         .bindPopup("You ({{ user.username }})")
         .openPopup();
+    
+    
+    console.log(friends); 
+    console.log(friends.length);
+    friends.forEach(friend => {
+        const fLat = friend.latitude;
+        const fLon = friend.longitude;
+        if (fLat !== 0 && fLon !== 0) {
+            const marker = L.marker([fLat, fLon], { title: friend.username })
+                .addTo(map)
+                .bindPopup(friend.username);
+            friendMarkers.push(marker);
+        }
+    });
 
     getLocationAndUpdate();
     setInterval(getLocationAndUpdate, 10000); // every 10s

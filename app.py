@@ -120,7 +120,7 @@ def dashboard():
     friends = db.session.execute(
         text("SELECT username, latitude, longitude FROM users WHERE id != :id"),
         {'id': session['user_id']}
-    ).fetchall()
+    ).mappings().all()
 
     return render_template('dashboard.html', user=user, friends=friends)
 
