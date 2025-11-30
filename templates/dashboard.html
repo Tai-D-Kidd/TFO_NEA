@@ -1,88 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Proto4web</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-</head>
-<style>
-  
-  #map {height: 80vh;}
-</style>
-<body>
-  <h1>Welcome, {{ user.username }}</h1>
-  <div id="map"></div>
-  
+<h1>Welcome, {{ user.username }}</h1>
 
+<h2>Your Maps</h2>
+<ul>
+    {% for m in current_maps %}
+        <li>{{ m.map_name }} - <a href="{{ url_for('map_view', map_id=m.id) }}">Open</a></li>
+    {% else %}
+        <li>You are not in any maps yet.</li>
+    {% endfor %}
+</ul>
 
+<h2>Create a New Map</h2>
+<form method="POST">
+    <input type="text" name="map_name" placeholder="Map Name" required>
+    <input type="number" step="any" name="map_center_lat" placeholder="Center Latitude">
+    <input type="number" step="any" name="map_center_lon" placeholder="Center Longitude">
+    <button type="submit">Create Map</button>
+</form>
 
-  <script>
-    let friendMarkers = [];
-    const startLat = {{ user.latitude|default(0, true) }};
-    const startLon = {{ user.longitude|default(0, true) }};
-    const map = L.map('map').setView([startLat, startLon], 13);
-    
-    // Add OpenStreetMap layer on top c+v
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-
-    // Add user's marker
-    userMarker = L.marker([startLat, startLon], { title: "You ({{ user.username }})" })
-        .addTo(map)
-        .bindPopup("You ({{ user.username }})")
-        .openPopup();
-    
-    const friends = {{ friends|tojson }};
-    console.log(friends); 
-    console.log(friends.length);
-    friends.forEach(friend => {
-        const fLat = friend.latitude;
-        const fLon = friend.longitude;
-        if (fLat !== 0 && fLon !== 0) {
-            const marker = L.marker([fLat, fLon], { title: friend.username })
-                .addTo(map)
-                .bindPopup(friend.username);
-            friendMarkers.push(marker);
-        }
-    });
-
-    getLocationAndUpdate();
-    setInterval(getLocationAndUpdate, 10000); // every 10s
-        
-
-    // getting and updating location 
-    function getLocationAndUpdate() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                pos => {
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-
-                    // Move the user marker
-                    userMarker.setLatLng([lat, lon]);
-                    
-
-                    //  new position to Flask backend
-                    fetch('/update_location', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ latitude: lat, longitude: lon })
-                    });
-                },
-                err => {
-                    console.error("Error getting location:", err);
-                    alert("Could not get your location. Check browser permissions.");
-                }
-            );
-        } else {
-            alert("Geolocation is not supported by your browser.");
-        }
-    }
-    
-    
-    
-   
-  </script>
-</html>
+<h2>Join Existing Maps</h2>
+<form method="POST">
+    <select name="join_map_id">
+        {% for m in available_maps %}
+            <option value="{{ m.id }}">{{ m.map_name }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit">Join Map</button>
+</form>

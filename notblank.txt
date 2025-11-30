@@ -4,3 +4,11 @@ with app.app_context():
             {'username': 'test', 'password': '1234', 'latitude': 51.5074, 'longitude': -0.1278}
     )
     db.session.commit()
+
+if 'user_id' not in session:
+        return redirect(url_for('home'))
+
+    user = db.session.execute(
+        text("SELECT username, latitude, longitude FROM users WHERE id = :id"),
+        {'id': session['user_id']}
+    ).fetchone()
