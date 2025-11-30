@@ -1,0 +1,6 @@
+with app.app_context():
+    db.session.execute(
+            text(" INSERT INTO users (username, password, latitude, longitude) VALUES (:username, :password, :latitude, :longitude) "),
+            {'username': 'test', 'password': '1234', 'latitude': 51.5074, 'longitude': -0.1278}
+    )
+    db.session.commit()

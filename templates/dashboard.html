@@ -34,7 +34,7 @@
         .bindPopup("You ({{ user.username }})")
         .openPopup();
     
-    
+    const friends = {{ friends|tojson }};
     console.log(friends); 
     console.log(friends.length);
     friends.forEach(friend => {

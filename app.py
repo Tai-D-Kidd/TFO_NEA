@@ -35,11 +35,13 @@ class MapsData(db.Model):
 with app.app_context():
     db.create_all()
 
+
 # routes
 
 @app.route('/')
 def home():
-    return render_template('login.html')
+
+    return render_template('home.html')
 
 #-- 'late registration' - Ye
 @app.route('/register', methods=['GET','POST'])
@@ -69,24 +71,27 @@ def register():
     return render_template('register.html')
 
 #-- login --
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['GET','POST'])
 def login():
-    username = request.form['username']
-    password = request.form['password']
+    if request.method == 'GET':
+        return render_template('login.html')
+    else:
+        username = request.form['username']
+        password = request.form['password']
 
-    result = db.session.execute(
-        text(" SELECT * FROM users WHERE username = :username "), {'username': username}
-    ).fetchone()
+        result = db.session.execute(
+            text(" SELECT * FROM users WHERE username = :username "), {'username': username}
+        ).fetchone()
 
-    if not result or not bcrypt.check_password_hash(result.password, password):
-        flash('Invalid username or password. Please try again.')
-        return redirect(url_for('home'))
+        if not result or not bcrypt.check_password_hash(result.password, password):
+            flash('Invalid username or password. Please try again.')
+            return redirect(url_for('home'))
 
-    #saving user sessinon
-    session['user_id'] = result.id
-    session['username'] = result.username
-    flash('Login successful!')
-    return redirect(url_for('dashboard'))
+        #saving user sessinon
+        session['user_id'] = result.id
+        session['username'] = result.username
+        flash('Login successful!')
+        return redirect(url_for('dashboard'))
 
     
 
@@ -118,12 +123,14 @@ def dashboard():
     ).fetchone()
 
     friends = db.session.execute(
-        text("SELECT username, latitude, longitude FROM users WHERE id != :id"),
-        {'id': session['user_id']}
+    text("SELECT username, latitude, longitude FROM users WHERE id != :id"),
+    {'id': session['user_id']}
     ).mappings().all()
 
-    return render_template('dashboard.html', user=user, friends=friends)
 
+    friends_list = [dict(friend) for friend in friends]
+
+    return render_template('dashboard.html', user=user, friends=friends_list)
 
 #she a runner she a track star
 if __name__ == '__main__':
