@@ -43,7 +43,27 @@
         const hexColor = friend.user_colour
         if (fLat !== 0 && fLon !== 0) {
             const userIcon = L.divIcon({
-            html: `<div style="background-color:${hexColor};width:16px;height:16px;border-radius:50%;border:2px solid white;"></div>`,
+            html: 
+            `<style>
+                .custom-marker {
+                    background-color: ${hexColor};
+                    width: 16px;
+                    height: 16px;
+                    display: block;
+                    left: -8px;
+                    top: -8px;
+                    position: relative;
+                    border-radius: 50%;
+                    border: 2px solid #FFFFFF;
+                }
+                .custom-marker:hover {
+                    color: #111;
+                    background: greenyellow;
+                    box-shadow: 0 0 100px greenyellow; 
+                }
+            </style>
+            <div class="custom-marker"></div>
+                    `,
             className: '',
             iconSize: [16,16]
         });

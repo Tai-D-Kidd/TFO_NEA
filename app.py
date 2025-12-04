@@ -79,7 +79,7 @@ def register():
         )
         db.session.commit()
         flash('Registration successful! Please log in.')
-        return redirect(url_for('home'))
+        return redirect(url_for('login'))
     return render_template('register.html')
 
 #-- login --
@@ -186,6 +186,7 @@ def dashboard():
                 text("INSERT INTO user_map (user_id, map_id, user_colour) VALUES (:user_id, :map_id, :user_colour) "),
                 {'user_id': session['user_id'], 'map_id': map_to_join.id, 'user_colour': colour}
             )
+            print(colour)
 
             
             db.session.execute(
@@ -247,7 +248,7 @@ def map_view():
 
     friends_list = [dict(friend) for friend in friends]
 
-    
+    print(friends_list)
 
 
     return render_template('map_view.html', map_data=map_data, user=user, friends=friends_list)
