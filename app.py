@@ -97,7 +97,7 @@ def login():
 
         if not result or not bcrypt.check_password_hash(result.password, password):
             flash('Invalid username or password. Please try again.')
-            return redirect(url_for('home'))
+            return redirect(url_for('login'))
 
         #saving user sessinon
         session['user_id'] = result.id
