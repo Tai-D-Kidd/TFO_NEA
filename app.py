@@ -1,8 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
-
-
+from flask_socketio import SocketIO, emit, join_room
 from sqlalchemy.sql import text
 
 
@@ -14,6 +13,8 @@ app.config['SECRET_KEY']= '.dot.dot'
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 
 # databases 
@@ -36,7 +37,7 @@ class Maps_Data(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     num_users = db.Column(db.Integer, default=0)
     
-
+# link between users and maps
 class User_Map(db.Model):
     __tablename__ = 'user_map'
     id = db.Column(db.Integer, primary_key=True)
@@ -44,6 +45,15 @@ class User_Map(db.Model):
     map_id = db.Column(db.Integer, db.ForeignKey('maps_data.id'), nullable=False)
     user_colour = db.Column(db.String(7), default ='#FFFFFF')  # Hex color number
     user_score = db.Column(db.Integer, nullable=True)
+
+# territories claimed by users on maps
+class Territory(db.Model):
+    __tablename__ = 'territory'
+    id = db.Column(db.Integer, primary_key=True)
+    map_id = db.Column(db.Integer, db.ForeignKey('maps_data.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    coordinates = db.Column(db.Text, nullable=False)  # JSON string of coordinates
+    color = db.Column(db.String(7), nullable=False)
 
 
 with app.app_context():
@@ -237,13 +247,14 @@ def map_view():
     friends = db.session.execute(
     text("""
         SELECT users.username, users.latitude, users.longitude, user_map.user_colour
-        FROM users 
+        FROM users
         JOIN user_map ON users.id = user_map.user_id
-        WHERE user_map.id =(SELECT map_id FROM user_map WHERE user_id = :id LIMIT 1 ) AND users.id != :id
+        WHERE user_map.map_id = :map_id
+          AND users.id != :user_id
     """),
-    {'id': session['user_id']}
-    
-    ).mappings().all()
+    {'map_id': map_id, 'user_id': session['user_id']}
+).mappings().all()
+
 
 
     friends_list = [dict(friend) for friend in friends]
@@ -253,4 +264,4 @@ def map_view():
 
     return render_template('map_view.html', map_data=map_data, user=user, friends=friends_list)
 if __name__ == '__main__':
-    app.run(debug=True)
+    socketio.run(app, debug=True)
