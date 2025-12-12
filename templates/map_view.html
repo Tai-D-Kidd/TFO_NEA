@@ -35,12 +35,13 @@
         .openPopup();
     
     const friends = {{ friends|tojson }};
-    console.log(friends); 
-    console.log(friends.length);
+   
     friends.forEach(friend => {
         const fLat = friend.latitude;
         const fLon = friend.longitude;
-        const hexColor = friend.user_colour
+        const hexColor = friend.user_colour;
+        console.log(friend.user_colour);
+        console.log('ddg')
         if (fLat !== 0 && fLon !== 0) {
             const userIcon = L.divIcon({
             html: 
@@ -57,7 +58,7 @@
                     border: 2px solid #FFFFFF;
                 }
                 .custom-marker:hover {
-                    color: #111;
+                    color: ${hexColor};
                     background: greenyellow;
                     box-shadow: 0 0 100px greenyellow; 
                 }

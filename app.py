@@ -14,7 +14,7 @@ app.config['SECRET_KEY']= '.dot.dot'
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 # databases 
