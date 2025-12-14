@@ -22,14 +22,26 @@
     const startLat = {{ user.latitude|default(0, true) }};
     const startLon = {{ user.longitude|default(0, true) }};
     const map = L.map('map').setView([startLat, startLon], 13);
-    
-    // Add OpenStreetMap layer on top c+v
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    const socket = io();
+    const mapID = {{ map_data.id }};
+    socket.emit('join_map', { map_id: mapID });
+
+
+
+
+    // Add OpenStreetMap layer on top 
+    L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.{ext}', {
+	minZoom: 0,
+	maxZoom: 20,
+	attribution: '&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+	ext: 'png'
     }).addTo(map);
 
     // Add user's marker
-    userMarker = L.marker([startLat, startLon], { title: "You ({{ user.username }})" })
+    const uColor = 'blue'; // place holder until user can choose color
+    userMarker = L.circleMarker(
+        [startLat, startLon],
+        { title: "You ({{ user.username }})", radius: 8, color: uColor, fillColor: uColor, fillOpacity: 0.8 })
         .addTo(map)
         .bindPopup("You ({{ user.username }})")
         .openPopup();
@@ -39,77 +51,92 @@
     friends.forEach(friend => {
         const fLat = friend.latitude;
         const fLon = friend.longitude;
-        const hexColor = friend.user_colour;
-        console.log(friend.user_colour);
-        console.log('ddg')
+        const fColor = friend.user_colour;
+        
         if (fLat !== 0 && fLon !== 0) {
-            const userIcon = L.divIcon({
-            html: 
-            `<style>
-                .custom-marker {
-                    background-color: ${hexColor};
-                    width: 16px;
-                    height: 16px;
-                    display: block;
-                    left: -8px;
-                    top: -8px;
-                    position: relative;
-                    border-radius: 50%;
-                    border: 2px solid #FFFFFF;
-                }
-                .custom-marker:hover {
-                    color: ${hexColor};
-                    background: greenyellow;
-                    box-shadow: 0 0 100px greenyellow; 
-                }
-            </style>
-            <div class="custom-marker"></div>
-                    `,
-            className: '',
-            iconSize: [16,16]
-        });
-            const marker = L.marker([fLat, fLon],{icon: userIcon}, { title: friend.username })
-                .addTo(map)
-                .bindPopup(friend.username);
-            friendMarkers.push(marker);
+            const marker = L.circleMarker(
+                [fLat, fLon],
+                { radius: 8, color: fColor, fillColor: fColor, fillOpacity: 0.8 }
+            ).addTo(map).bindPopup(friend.username);
+
+            friendMarkers.push({ id: friend.id, marker });
         }
     });
+// trail stuff
+    let trailPoints = [];
+    let trailLine = null;
+    
 
-    getLocationAndUpdate();
-    setInterval(getLocationAndUpdate, 10000); // every 10s
+    function updateTrail(lat, lon) {
+        trailPoints.push([lat, lon]);
+
+        if (trailLine) map.removeLayer(trailLine);
+
+        trailLine = L.polyline(trailPoints, {
+            color: uColor,
+            weight: 4,
+            className: "trail"
+        }).addTo(map);
+
+        // Close loop → territory
+        if (trailPoints.length > 10 &&
+            map.distance(trailPoints[0], [lat, lon]) < 10) {
+
+            L.polygon(trailPoints, {
+                color: uColor,
+                fillColor: uColor,
+                fillOpacity: 0.67
+            }).addTo(map);
+
+            socket.emit("territory_created", {
+                map_id: mapId,
+                coords: trailPoints,
+                color: uColor
+            });
+
+            trailPoints = [];
+            map.removeLayer(trailLine);
+            trailLine = null;
+        }
+    }
+
+
+
+    
         
 
     // getting and updating location 
-    function getLocationAndUpdate() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                pos => {
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
+    navigator.geolocation.watchPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
 
-                    // Move the user marker
-                    userMarker.setLatLng([lat, lon]);
-                    
+        userMarker.setLatLng([lat, lon]);
 
-                    //  new position to Flask backend
-                    fetch('/update_location', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ latitude: lat, longitude: lon })
-                    });
-                },
-                err => {
-                    console.error("Error getting location:", err);
-                    alert("Could not get your location. Check browser permissions.");
-                }
-            );
-        } else {
-            alert("Geolocation is not supported by your browser.");
+        updateTrail(lat, lon);
+
+        socket.emit("update_location", {
+            map_id: mapId,
+            latitude: lat,
+            longitude: lon
+        });
+    });
+    
+    
+   // socket eventss
+    socket.on("player_moved", data => {
+        const friend = friendMarkers.find(f => f.id === data.user_id);
+        if (friend) {
+            friend.marker.setLatLng([data.lat, data.lon]);
         }
-    }
-    
-    
-    
+    });
+
+    socket.on("new_territory", data => {
+        L.polygon(data.coords, {
+            color: data.color,
+            fillColor: data.color,
+            fillOpacity: 0.7
+        }).addTo(map);
+    });
    
   </script>
 </html>

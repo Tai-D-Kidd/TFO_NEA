@@ -3,10 +3,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room
 from sqlalchemy.sql import text
-
+from datetime import timedelta
 
 app = Flask(__name__)
-
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['JWT_SECRET_KEY'] = 'dot.dot.'
 app.config['SECRET_KEY']= '.dot.dot'
@@ -17,7 +17,7 @@ bcrypt = Bcrypt(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 
-# databases 
+################. DATABASE MODELS #####################
 
 class Users(db.Model):
     __tablename__ = 'users'
@@ -43,8 +43,8 @@ class User_Map(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     map_id = db.Column(db.Integer, db.ForeignKey('maps_data.id'), nullable=False)
-    user_colour = db.Column(db.String(7), default ='#FFFFFF')  # Hex color number
-    user_score = db.Column(db.Integer, nullable=True)
+    user_colour = db.Column(db.String(7), server_default ='#FFFFFF', nullable=False)  # Hex color number
+    user_score = db.Column(db.Integer, server_default='0', nullable=False)
 
 # territories claimed by users on maps
 class Territory(db.Model):
@@ -59,7 +59,7 @@ class Territory(db.Model):
 with app.app_context():
     db.create_all()
 
-# routes
+################. ROUTES #####################
 @app.route('/')
 def home():
 
@@ -116,8 +116,6 @@ def login():
         return redirect(url_for('dashboard'))
 
     
-
-
 @app.route('/update_location', methods=['POST'])
 def update_location():
     if 'user_id' not in session:
@@ -166,7 +164,7 @@ def dashboard():
             )
             db.session.commit()
             
-            # add user to this map
+            # add owner to this map
             db.session.execute(
                 text(" INSERT INTO user_map (user_id, map_id) VALUES (:user_id, (SELECT id FROM maps_data WHERE map_name = :map_name AND owner_id = :user_id)) "),
                 {'user_id': session['user_id'],'map_name': map_name}
@@ -189,14 +187,12 @@ def dashboard():
 
             # add user to map
 
-            colour ='#'+''.join([hex(ord(c))[2:] for c in session['username']])[:6]#generate colour from username
-            while len(colour)<7:
-                colour+='0'
+            colour = "#%06x" % (int(map_to_join.num_users * 1234567) % 0xFFFFFF)  # Generate a pseudo-random color based on num_users
             db.session.execute(
                 text("INSERT INTO user_map (user_id, map_id, user_colour) VALUES (:user_id, :map_id, :user_colour) "),
                 {'user_id': session['user_id'], 'map_id': map_to_join.id, 'user_colour': colour}
             )
-            print(colour)
+            
 
             
             db.session.execute(
@@ -236,10 +232,16 @@ def map_view():
     ).fetchone()
 
     user = db.session.execute(
-        text(" SELECT username, latitude, longitude FROM users WHERE id = :user_id "),
-        {'user_id': session['user_id']}
+        text("""
+            SELECT users.username, users.latitude, users.longitude , user_map.user_colour
+            FROM users 
+            JOIN user_map ON users.id = user_map.user_id
+            WHERE user_map.map_id = :map_id
+              AND users.id = :user_id
+        """),
+        {'map_id': map_id, 'user_id': session['user_id']}
     ).fetchone()
-
+    
     if not map_data:
         flash('Map not found.')
         return redirect(url_for('dashboard'))
@@ -255,13 +257,68 @@ def map_view():
     {'map_id': map_id, 'user_id': session['user_id']}
 ).mappings().all()
 
-
-
     friends_list = [dict(friend) for friend in friends]
+    #print(friends_list)
+    territories = db.session.execute(
+        text(" SELECT * FROM territory WHERE map_id = :map_id "),
+        {'map_id': map_id}
+    ).fetchall()
 
-    print(friends_list)
+    territories_list=[{
+            'coords': json.loads(t.coordinates),
+            'color': t.color
+        } for t in territories]
+    
+
+    return render_template('map_view.html', map_data=map_data, user=user, friends=friends_list, territories=territories_list)
 
 
-    return render_template('map_view.html', map_data=map_data, user=user, friends=friends_list)
+
+##############. SOCKET.IO EVENTS #####################
+@socketio.on("join_map")
+def join_map_room(data):
+    join_room(f"map_{data['map_id']}")
+
+@socketio.on("update_location")
+def update_location_socket(data):
+    user_id = session.get("user_id")
+    lat = data["latitude"]
+    lon = data["longitude"]
+    map_id = data["map_id"]
+
+    db.session.execute(
+        text("UPDATE users SET latitude=:lat, longitude=:lon WHERE id=:u"),
+        {'lat': lat, 'lon': lon, 'u': user_id}
+    )
+    db.session.commit()
+
+    emit(
+        "player_moved",
+        {"user_id": user_id, "lat": lat, "lon": lon},
+        room=f"map_{map_id}",
+        include_self=False
+    )
+
+@socketio.on("territory_created")
+def territory_created(data):
+    map_id = data["map_id"]
+    coords = data["coords"]
+    color = data["color"]
+    user_id = session.get("user_id")
+
+    db.session.add(Territory(
+        map_id=map_id,
+        user_id=user_id,
+        coordinates=json.dumps(coords),
+        color=color
+    ))
+    db.session.commit()
+
+    emit(
+        "new_territory",
+        {"coords": coords, "color": color},
+        room=f"map_{map_id}",
+        include_self=False
+    )
 if __name__ == '__main__':
     socketio.run(app, debug=True)

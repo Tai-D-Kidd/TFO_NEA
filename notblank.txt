@@ -16,3 +16,29 @@ if 'user_id' not in session:
 
     <link rel="stylesheet" href="{{ url_for('static', filename='base.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
+
+old map layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+
+test for territories and paths (replaces update location bit)
+
+let testLat = startLat;
+let testLon = startLon;
+let angle = 0;
+
+const fakeMove = setInterval(() => {
+    // Move in a slow circle
+    angle += 0.2;
+
+    testLat += Math.cos(angle) * 0.00005;
+    testLon += Math.sin(angle) * 0.00005;
+
+    userMarker.setLatLng([testLat, testLon]);
+    updateTrail(testLat, testLon);
+
+}, 500);
+
+
