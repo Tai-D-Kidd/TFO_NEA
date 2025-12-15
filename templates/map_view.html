@@ -3,42 +3,69 @@
 <head>
     <title>Proto4web</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='map_view.css') }}">
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
-<style>
-  
-  #map {height: 80vh;}
-</style>
+
 <body>
-  <h1>{{ map_data.map_name }}</h1>
-  <div id="map"></div>
+  <div class="container">
+    <!-- MAP -->
+    <div class="panel">
+        <h2>{{ map_data.map_name }}</h2>
+        <div id="map"></div>
+    </div>
+
+    <!-- LEADERBOARD -->
+    <div class="panel">
+        <h2>Leaderboard</h2>
+        <ul id="leaderboard">
+            {% for row in leaderboard %}
+                <li>
+                    <span class="color-dot" style="background: {{ row.user_colour }}"></span>
+                    {{ row.username }} - {{ row.user_score|round(0) }}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
   
 
 
 
   <script>
     let friendMarkers = [];
+    const mapID = {{ map_data.id }};
     const startLat = {{ user.latitude|default(0, true) }};
     const startLon = {{ user.longitude|default(0, true) }};
+    const friends = {{ friends|tojson }};
+    const territories = {{ territories|tojson }};
+    let scores = {};
+
+    {% for row in leaderboard %}
+        scores["{{ row.username }}"] = {{ row.user_score }};
+    {% endfor %}
+
     const map = L.map('map').setView([startLat, startLon], 13);
     const socket = io();
-    const mapID = {{ map_data.id }};
+    
     socket.emit('join_map', { map_id: mapID });
 
 
-
-
-    // Add OpenStreetMap layer on top 
+    // Add Map layer on top 
     L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.{ext}', {
 	minZoom: 0,
 	maxZoom: 20,
 	attribution: '&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 	ext: 'png'
     }).addTo(map);
-
+// game stuff
+    
+    
     // Add user's marker
     const uColor = 'blue'; // place holder until user can choose color
+
     userMarker = L.circleMarker(
         [startLat, startLon],
         { title: "You ({{ user.username }})", radius: 8, color: uColor, fillColor: uColor, fillOpacity: 0.8 })
@@ -46,9 +73,10 @@
         .bindPopup("You ({{ user.username }})")
         .openPopup();
     
-    const friends = {{ friends|tojson }};
-   
+    
+    // friends markers
     friends.forEach(friend => {
+        
         const fLat = friend.latitude;
         const fLon = friend.longitude;
         const fColor = friend.user_colour;
@@ -62,7 +90,18 @@
             friendMarkers.push({ id: friend.id, marker });
         }
     });
-// trail stuff
+
+    // existing territories
+    territories.forEach(t => {
+        L.polygon(t.coordinatess, {
+            color: "#"+(t.user_id*1234567 % 0xFFFFFF).toString(16).padStart(6, "0"),
+            fillColor: "#"+(t.user_id*1234567 % 0xFFFFFF).toString(16).padStart(6, "0"),
+            fillOpacity: 0.6
+        }).addTo(map);
+    });
+
+
+    // trails
     let trailPoints = [];
     let trailLine = null;
     
@@ -78,20 +117,22 @@
             className: "trail"
         }).addTo(map);
 
-        // Close loop → territory
-        if (trailPoints.length > 10 &&
-            map.distance(trailPoints[0], [lat, lon]) < 10) {
+        // Close loop -> territory -> points
+        if (trailPoints.length > 10 && map.distance(trailPoints[0], [lat, lon]) < 10) {
 
-            L.polygon(trailPoints, {
+            const polygon = L.polygon(trailPoints, {
                 color: uColor,
                 fillColor: uColor,
                 fillOpacity: 0.67
             }).addTo(map);
+            
+            const area = polygonArea(trailPoints);
+            
 
             socket.emit("territory_created", {
-                map_id: mapId,
-                coords: trailPoints,
-                color: uColor
+                map_id: mapID,
+                coordinates: trailPoints.slice(),
+                
             });
 
             trailPoints = [];
@@ -101,25 +142,70 @@
     }
 
 
+function polygonArea(coordinates) {
+    let area = 0;
+    for (let i = 0; i < coordinates.length; i++) {
+        const [x1, y1] = coordinates[i];
+        const [x2, y2] = coordinates[(i + 1) % coordinates.length];
+        area += x1 * y2 - x2 * y1;
+    }
+    return Math.abs(area / 2);
+}
 
+function updateLeaderboard() {
+    const list = document.getElementById("leaderboard");
+    list.innerHTML = "";
+
+    Object.entries(scores)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([name, score]) => {
+            const li = document.createElement("li");
+            li.innerHTML = `<span>${name}</span><span>${score.toFixed(0)}</span>`;
+            list.appendChild(li);
+        });
+}
     
         
 
     // getting and updating location 
-    navigator.geolocation.watchPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
+    // --- TEST SIMULATION: User moving in a circle ---
+    const radius = 0.001;
+const steps = 60;
+let step = 0;
 
-        userMarker.setLatLng([lat, lon]);
+function simulateCircularMovement() {
+    const angle = (step / steps) * 2 * Math.PI;
+    const lat = startLat + radius * Math.cos(angle);
+    const lon = startLon + radius * Math.sin(angle);
 
-        updateTrail(lat, lon);
+    // Move the user marker
+    userMarker.setLatLng([lat, lon]);
 
-        socket.emit("update_location", {
-            map_id: mapId,
-            latitude: lat,
-            longitude: lon
-        });
+    // Update trail
+    updateTrail(lat, lon);
+
+    // Emit location
+    socket.emit("update_location", {
+        map_id: mapID,
+        latitude: lat,
+        longitude: lon
     });
+
+    step = (step + 1) % steps; // increment step
+
+    // Only close loop when a full circle is complete
+    if (step === 0 && trailPoints.length > 0) {
+        socket.emit("territory_created", { map_id: mapID, coordinates: trailPoints.slice() });
+        trailPoints = [];
+        if (trailLine) {
+            map.removeLayer(trailLine);
+            trailLine = null;
+        }
+    }
+}
+
+// Run every 500ms
+setInterval(simulateCircularMovement, 500);
     
     
    // socket eventss
@@ -131,12 +217,20 @@
     });
 
     socket.on("new_territory", data => {
-        L.polygon(data.coords, {
+        L.polygon(data.coordinates, {
             color: data.color,
             fillColor: data.color,
             fillOpacity: 0.7
         }).addTo(map);
     });
-   
+   updateLeaderboard()
+
+    socket.on("score_updated", data => {
+    scores[data.username] = data.new_score;
+    updateLeaderboard();
+});
+
+
+
   </script>
 </html>

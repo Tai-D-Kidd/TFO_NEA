@@ -4,6 +4,8 @@ from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room
 from sqlalchemy.sql import text
 from datetime import timedelta
+import math
+import json
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
@@ -48,13 +50,13 @@ class User_Map(db.Model):
 
 # territories claimed by users on maps
 class Territory(db.Model):
-    __tablename__ = 'territory'
+    __tablename__ = 'territories'
     id = db.Column(db.Integer, primary_key=True)
     map_id = db.Column(db.Integer, db.ForeignKey('maps_data.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    coordinates = db.Column(db.Text, nullable=False)  # JSON string of coordinates
-    color = db.Column(db.String(7), nullable=False)
-
+    coordinates = db.Column(db.Text, nullable=False)  
+    area = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
 
 with app.app_context():
     db.create_all()
@@ -259,18 +261,48 @@ def map_view():
 
     friends_list = [dict(friend) for friend in friends]
     #print(friends_list)
-    territories = db.session.execute(
-        text(" SELECT * FROM territory WHERE map_id = :map_id "),
-        {'map_id': map_id}
-    ).fetchall()
-
-    territories_list=[{
-            'coords': json.loads(t.coordinates),
-            'color': t.color
-        } for t in territories]
     
+    # terries
+    
+    territories = db.session.execute(
+        text("""
+            SELECT user_id, area, coordinates
+            FROM territories
+            WHERE map_id = :map_id
+        """),
+        {"map_id": map_id}
+    ).mappings().all()
+    territories_list = []
+    for t in territories:
+        territories_list.append({
+            "user_id": t["user_id"],
+            "area": t["area"],
+            "coordinates": json.loads(t["coordinates"]) 
+        })
 
-    return render_template('map_view.html', map_data=map_data, user=user, friends=friends_list, territories=territories_list)
+    # Leaderboard
+    leaderboard = db.session.execute(
+        text("""
+            SELECT
+                users.id AS user_id,
+                users.username,
+                user_map.user_score,
+                user_map.user_colour
+            FROM user_map
+            JOIN users ON users.id = user_map.user_id
+            WHERE user_map.map_id = :map_id
+            ORDER BY user_map.user_score DESC
+        """),
+        {"map_id": map_id}
+    ).mappings().all()
+    leaderboard_list = [dict(entry) for entry in leaderboard]
+
+    return render_template('map_view.html',
+                            map_data=map_data, 
+                            user=user, 
+                            friends=friends_list, 
+                            territories=territories_list,
+                            leaderboard=leaderboard_list)
 
 
 
@@ -301,24 +333,67 @@ def update_location_socket(data):
 
 @socketio.on("territory_created")
 def territory_created(data):
-    map_id = data["map_id"]
-    coords = data["coords"]
-    color = data["color"]
     user_id = session.get("user_id")
+    username = session.get("username")
+    if not user_id:
+        return
 
-    db.session.add(Territory(
+    map_id = data["map_id"]
+    coordinates = data["coordinates"]
+
+    area = polygon_area(coordinates)
+    coordinates_json=json.dumps(coordinates)
+    # Save territory to db
+    territory = Territory(
         map_id=map_id,
         user_id=user_id,
-        coordinates=json.dumps(coords),
-        color=color
-    ))
+        coordinates=coordinates_json,
+        area=area
+    )
+    db.session.add(territory)
+
+    # Update user score to db
+    user_map = User_Map.query.filter_by(
+        username=username,
+        map_id=map_id
+    ).first()
+
+    user_map.user_score += area
     db.session.commit()
 
-    emit(
-        "new_territory",
-        {"coords": coords, "color": color},
-        room=f"map_{map_id}",
-        include_self=False
-    )
+    # Broadcast to everyone in map
+    emit("new_territory", {
+        "coordinates": coordinates,
+        "user_id": user_id,
+        "area": area
+    }, room=f"map_{map_id}")
+    
+    emit("score_updated", {
+        "username": user_id,
+        "new_score": user_map.user_score
+    }, room=f"map_{map_id}")
+
+
+def polygon_area(coordinates):
+    # Shoelace/ Gause area formula
+    area = 0
+    n = len(coordinates)
+
+    for i in range(n):
+        lat1, lon1 = coordinates[i]
+        lat2, lon2 = coordinates[(i + 1) % n]
+        area += lon1 * lat2
+        area -= lon2 * lat1
+
+    return abs(area) / 2
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
     socketio.run(app, debug=True)
+

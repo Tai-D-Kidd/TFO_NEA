@@ -1,0 +1,82 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #e0e0e0;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+
+.container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    padding: 2rem;
+    max-width: 1400px;
+    width: 100%;
+    justify-content: center;
+}
+
+/* Panels (map and leaderboard) */
+.panel {
+    background: #e0e0e0;
+    border-radius: 20px;
+    box-shadow:  10px 10px 20px #bebebe,
+                 -10px -10px 20px #ffffff;
+    padding: 1.5rem;
+    flex: 1 1 400px;
+    max-width: 600px;
+}
+
+/* Headings */
+.panel h2 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #333;
+    text-align: center;
+}
+
+/* Map container */
+#map {
+    height: 500px;
+    width: 100%;
+    border-radius: 20px;
+    box-shadow: inset 5px 5px 15px #bebebe,
+                inset -5px -5px 15px #ffffff;
+}
+
+/* Leaderboard */
+.leaderboard-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #e0e0e0;
+    border-radius: 15px;
+    padding: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+    box-shadow:  5px 5px 10px #bebebe,
+                 -5px -5px 10px #ffffff;
+    transition: transform 0.2s;
+}
+
+.leaderboard-row:hover {
+    transform: scale(1.02);
+}
+
+.color-dot {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+    border: 1px solid #999;
+    vertical-align: middle;
+}
+
+/* Text inside leaderboard */
+.leaderboard-row span {
+    font-weight: 600;
+    color: #333;
+}
