@@ -22,7 +22,7 @@
         <ul id="leaderboard">
             {% for row in leaderboard %}
                 <li>
-                    <span class="color-dot" style="background: {{ row.user_colour }}"></span>
+                    <span class="color-dot" style="background: {{ row.user_color }}"></span>
                     {{ row.username }} - {{ row.user_score|round(0) }}
                 </li>
             {% endfor %}
@@ -39,6 +39,8 @@
     const mapID = {{ map_data.id }};
     const startLat = {{ user.latitude|default(0, true) }};
     const startLon = {{ user.longitude|default(0, true) }};
+    let currentLat = startLat;
+    let currentLon = startLon;
     const friends = {{ friends|tojson }};
     const territories = {{ territories|tojson }};
     let scores = {};
@@ -62,13 +64,21 @@
     }).addTo(map);
 // game stuff
     
-    
+    // existing territories
+    territories.forEach(t => {
+        L.polygon(t.coordinates, {
+            color: t.color,
+            fillcolor: t.color,
+            fillOpacity: 1
+        }).addTo(map);
+    });
+
     // Add user's marker
-    const uColor = 'blue'; // place holder until user can choose color
+    const ucolor = "{{ user.user_color }}";
 
     userMarker = L.circleMarker(
         [startLat, startLon],
-        { title: "You ({{ user.username }})", radius: 8, color: uColor, fillColor: uColor, fillOpacity: 0.8 })
+        { title: "You ({{ user.username }})", radius: 10, color: ucolor, fillcolor: ucolor, fillOpacity: 0.8 })
         .addTo(map)
         .bindPopup("You ({{ user.username }})")
         .openPopup();
@@ -79,26 +89,19 @@
         
         const fLat = friend.latitude;
         const fLon = friend.longitude;
-        const fColor = friend.user_colour;
+        const fcolor = friend.user_color;
         
         if (fLat !== 0 && fLon !== 0) {
             const marker = L.circleMarker(
                 [fLat, fLon],
-                { radius: 8, color: fColor, fillColor: fColor, fillOpacity: 0.8 }
+                { radius: 8, color: fcolor, fillColor: fcolor, fillOpacity: 0.8 }
             ).addTo(map).bindPopup(friend.username);
 
             friendMarkers.push({ id: friend.id, marker });
         }
     });
 
-    // existing territories
-    territories.forEach(t => {
-        L.polygon(t.coordinatess, {
-            color: "#"+(t.user_id*1234567 % 0xFFFFFF).toString(16).padStart(6, "0"),
-            fillColor: "#"+(t.user_id*1234567 % 0xFFFFFF).toString(16).padStart(6, "0"),
-            fillOpacity: 0.6
-        }).addTo(map);
-    });
+    
 
 
     // trails
@@ -106,13 +109,14 @@
     let trailLine = null;
     
 
-    function updateTrail(lat, lon) {
+
+function updateTrail(lat, lon) {
         trailPoints.push([lat, lon]);
 
         if (trailLine) map.removeLayer(trailLine);
 
         trailLine = L.polyline(trailPoints, {
-            color: uColor,
+            color: ucolor,
             weight: 4,
             className: "trail"
         }).addTo(map);
@@ -121,17 +125,18 @@
         if (trailPoints.length > 10 && map.distance(trailPoints[0], [lat, lon]) < 10) {
 
             const polygon = L.polygon(trailPoints, {
-                color: uColor,
-                fillColor: uColor,
+                color: ucolor,
+                fillColor: ucolor,
                 fillOpacity: 0.67
             }).addTo(map);
             
-            const area = polygonArea(trailPoints);
+            
             
 
             socket.emit("territory_created", {
                 map_id: mapID,
                 coordinates: trailPoints.slice(),
+                color: ucolor
                 
             });
 
@@ -142,15 +147,7 @@
     }
 
 
-function polygonArea(coordinates) {
-    let area = 0;
-    for (let i = 0; i < coordinates.length; i++) {
-        const [x1, y1] = coordinates[i];
-        const [x2, y2] = coordinates[(i + 1) % coordinates.length];
-        area += x1 * y2 - x2 * y1;
-    }
-    return Math.abs(area / 2);
-}
+
 
 function updateLeaderboard() {
     const list = document.getElementById("leaderboard");
@@ -164,48 +161,98 @@ function updateLeaderboard() {
             list.appendChild(li);
         });
 }
-    
-        
 
-    // getting and updating location 
-    // --- TEST SIMULATION: User moving in a circle ---
-    const radius = 0.001;
-const steps = 60;
-let step = 0;
+// SEND ME THE LOCATION 
 
-function simulateCircularMovement() {
-    const angle = (step / steps) * 2 * Math.PI;
-    const lat = startLat + radius * Math.cos(angle);
-    const lon = startLon + radius * Math.sin(angle);
-
-    // Move the user marker
+function handlePosition(lat, lon) {
+    currentLat = lat;
+    currentLon = lon;
     userMarker.setLatLng([lat, lon]);
-
-    // Update trail
     updateTrail(lat, lon);
 
-    // Emit location
     socket.emit("update_location", {
         map_id: mapID,
         latitude: lat,
         longitude: lon
     });
+}
+    
+// simulated movenent
+const radius = 0.001;     
+const steps = 72;        
+let step = 0;
+let movementInterval = null;
+let simulationEnabled = false;
+let simCenterLat = null;
+let simCenterLon = null;
+let simStartAngle = 0;
 
-    step = (step + 1) % steps; // increment step
 
-    // Only close loop when a full circle is complete
-    if (step === 0 && trailPoints.length > 0) {
-        socket.emit("territory_created", { map_id: mapID, coordinates: trailPoints.slice() });
-        trailPoints = [];
-        if (trailLine) {
-            map.removeLayer(trailLine);
-            trailLine = null;
-        }
+function simulateCircularMovement() {
+    if (step > steps) {
+        clearInterval(movementInterval);
+        movementInterval = null;
+        step = 0;
+        return;
     }
+
+    const angle = simStartAngle + (step / steps) * 2 * Math.PI;
+
+    let lat = simCenterLat + radius * Math.cos(angle);
+    let lon = simCenterLon + radius * Math.sin(angle);
+
+    handlePosition(lat, lon);
+    step++; // +=1 in js
 }
 
-// Run every 500ms
-setInterval(simulateCircularMovement, 500);
+
+document.addEventListener("keydown", e => {
+    if (e.key.toLowerCase() === "s") {
+        simulationEnabled = !simulationEnabled;
+
+        if (simulationEnabled) {
+            console.log("🟢 Simulation ON");
+            const startAngle = 0;
+            simCenterLat = currentLat - radius * Math.cos(startAngle);
+            simCenterLon = currentLon - radius * Math.sin(startAngle);
+            simStartAngle = startAngle;
+
+            step = 0;
+            movementInterval = setInterval(simulateCircularMovement, 400);
+        } else {
+            console.log("🔴 Simulation OFF");
+            clearInterval(movementInterval);
+            movementInterval = null;
+        }
+    }
+});
+let watchId = null;
+
+if ("geolocation" in navigator) {
+    watchId = navigator.geolocation.watchPosition(
+        pos => {
+            if (simulationEnabled) return;
+
+            handlePosition(
+                pos.coords.latitude,
+                pos.coords.longitude
+            );
+        },
+        err => console.error("GPS error:", err),
+        {
+            enableHighAccuracy: true,
+            maximumAge: 1000,
+            timeout: 10000
+        }
+    );
+}
+    
+
+    
+    
+        
+
+    
     
     
    // socket eventss
@@ -219,8 +266,8 @@ setInterval(simulateCircularMovement, 500);
     socket.on("new_territory", data => {
         L.polygon(data.coordinates, {
             color: data.color,
-            fillColor: data.color,
-            fillOpacity: 0.7
+            fillcolor: data.color,
+            fillOpacity: 1
         }).addTo(map);
     });
    updateLeaderboard()

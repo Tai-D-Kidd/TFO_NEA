@@ -25,20 +25,44 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 test for territories and paths (replaces update location bit)
 
-let testLat = startLat;
-let testLon = startLon;
-let angle = 0;
+// --- TEST SIMULATION: User moving in a circle ---
+    const radius = 0.001;
+const steps = 60;
+let step = 0;
 
-const fakeMove = setInterval(() => {
-    // Move in a slow circle
-    angle += 0.2;
+function simulateCircularMovement() {
+    const angle = (step / steps) * 2 * Math.PI;
+    const lat = startLat + radius * Math.cos(angle);
+    const lon = startLon + radius * Math.sin(angle);
 
-    testLat += Math.cos(angle) * 0.00005;
-    testLon += Math.sin(angle) * 0.00005;
+    // Move the user marker
+    userMarker.setLatLng([lat, lon]);
 
-    userMarker.setLatLng([testLat, testLon]);
-    updateTrail(testLat, testLon);
+    // Update trail
+    updateTrail(lat, lon);
 
-}, 500);
+    // Emit location
+    socket.emit("update_location", {
+        map_id: mapID,
+        latitude: lat,
+        longitude: lon
+    });
+
+    step = (step + 1) % steps; // increment step
+
+    // Only close loop when a full circle is complete
+    if (step === 0 && trailPoints.length > 0) {
+        socket.emit("territory_created", { map_id: mapID, coordinates: trailPoints.slice() });
+        trailPoints = [];
+        if (trailLine) {
+            map.removeLayer(trailLine);
+            trailLine = null;
+        }
+    }
+}
+
+// Run every 500ms
+setInterval(simulateCircularMovement, 500);
+    
 
 

@@ -9,7 +9,7 @@ import json
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase.db'
 app.config['JWT_SECRET_KEY'] = 'dot.dot.'
 app.config['SECRET_KEY']= '.dot.dot'
 
@@ -45,7 +45,7 @@ class User_Map(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     map_id = db.Column(db.Integer, db.ForeignKey('maps_data.id'), nullable=False)
-    user_colour = db.Column(db.String(7), server_default ='#FFFFFF', nullable=False)  # Hex color number
+    user_color = db.Column(db.String(7), server_default ='#FFFFFF', nullable=False)  # Hex color number
     user_score = db.Column(db.Integer, server_default='0', nullable=False)
 
 # territories claimed by users on maps
@@ -53,6 +53,7 @@ class Territory(db.Model):
     __tablename__ = 'territories'
     id = db.Column(db.Integer, primary_key=True)
     map_id = db.Column(db.Integer, db.ForeignKey('maps_data.id'), nullable=False)
+    color = db.Column(db.String(7), nullable=False)  # Hex color number 
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     coordinates = db.Column(db.Text, nullable=False)  
     area = db.Column(db.Float, nullable=False)
@@ -141,7 +142,10 @@ def dashboard():
         return redirect(url_for('home'))
 
     user = db.session.execute(
-        text("SELECT username, latitude, longitude FROM users WHERE id = :id"),
+        text("""
+            SELECT username, latitude, longitude 
+            FROM users WHERE id = :id
+            """),
         {'id': session['user_id']}
     ).fetchone()
     if request.method == 'POST':
@@ -153,7 +157,10 @@ def dashboard():
             
             # into db
             db.session.execute(
-                text(" INSERT INTO maps_data (map_name, desc, map_center_lat, map_center_lon, owner_id, num_users) VALUES (:map_name, :desc, :map_center_lat, :map_center_lon, :owner_id, :num_users) "),
+                text("""
+                    INSERT INTO maps_data (map_name, desc, map_center_lat, map_center_lon, owner_id, num_users) 
+                    VALUES (:map_name, :desc, :map_center_lat, :map_center_lon, :owner_id, :num_users) 
+                    """),
                 {
                     'map_name': map_name,
                     'desc': request.form.get('desc', ''),
@@ -168,8 +175,11 @@ def dashboard():
             
             # add owner to this map
             db.session.execute(
-                text(" INSERT INTO user_map (user_id, map_id) VALUES (:user_id, (SELECT id FROM maps_data WHERE map_name = :map_name AND owner_id = :user_id)) "),
-                {'user_id': session['user_id'],'map_name': map_name}
+                text("""
+                    INSERT INTO user_map (user_id, map_id, user_color) 
+                    VALUES (:user_id, (SELECT id FROM maps_data WHERE map_name = :map_name AND owner_id = :user_id), :user_color) 
+                    """),
+                {'user_id': session['user_id'],'map_name': map_name, 'user_color': name2color(session['username'])}
             )
             db.session.commit()
             flash(f'Map "{map_name}" created and joined!')
@@ -181,7 +191,11 @@ def dashboard():
 
         # check if already in map
         userin = db.session.execute(
-            text("SELECT * FROM user_map WHERE user_id = :user_id AND map_id = :map_id"),
+            text("""
+                SELECT * 
+                FROM user_map 
+                WHERE user_id = :user_id AND map_id = :map_id
+                """),
             {'user_id': session['user_id'], 'map_id': map_to_join.id}
         ).fetchone()
 
@@ -189,16 +203,22 @@ def dashboard():
 
             # add user to map
 
-            colour = "#%06x" % (int(map_to_join.num_users * 1234567) % 0xFFFFFF)  # Generate a pseudo-random color based on num_users
+            color = name2color(session['username'])
             db.session.execute(
-                text("INSERT INTO user_map (user_id, map_id, user_colour) VALUES (:user_id, :map_id, :user_colour) "),
-                {'user_id': session['user_id'], 'map_id': map_to_join.id, 'user_colour': colour}
+                text("""
+                    INSERT INTO user_map (user_id, map_id, user_color) 
+                    VALUES (:user_id, :map_id, :user_color)
+                    """),
+                {'user_id': session['user_id'], 'map_id': map_to_join.id, 'user_color': color}
             )
             
 
             
             db.session.execute(
-                text("UPDATE maps_data SET num_users = num_users + 1 WHERE id = :map_id"),
+                text("""
+                    UPDATE maps_data SET num_users = num_users + 1 
+                    WHERE id = :map_id
+                    """),
                 {'map_id': map_to_join.id}
             )
 
@@ -210,13 +230,19 @@ def dashboard():
 
     # Show maps user is currently in
     current_maps = db.session.execute(
-        text(" SELECT maps_data.* FROM maps_data JOIN user_map ON maps_data.id = user_map.map_id WHERE user_map.user_id = :user_id "),
+        text("""
+            SELECT maps_data.* FROM maps_data 
+            JOIN user_map ON maps_data.id = user_map.map_id WHERE user_map.user_id = :user_id 
+             """),
         {'user_id': session['user_id']}
     ).fetchall()
 
     # Show all maps they are NOT in (to join)
     available_maps = db.session.execute(
-        text(" SELECT * FROM maps_data WHERE id NOT IN (SELECT map_id FROM user_map WHERE user_id = :user_id) "),
+        text("""
+            SELECT * FROM maps_data 
+            WHERE id NOT IN (SELECT map_id FROM user_map WHERE user_id = :user_id) 
+            """),
         {'user_id': session['user_id']}
     ).fetchall()
 
@@ -235,7 +261,7 @@ def map_view():
 
     user = db.session.execute(
         text("""
-            SELECT users.username, users.latitude, users.longitude , user_map.user_colour
+            SELECT users.username, users.latitude, users.longitude , user_map.user_color
             FROM users 
             JOIN user_map ON users.id = user_map.user_id
             WHERE user_map.map_id = :map_id
@@ -250,7 +276,7 @@ def map_view():
     
     friends = db.session.execute(
     text("""
-        SELECT users.username, users.latitude, users.longitude, user_map.user_colour
+        SELECT users.username, users.latitude, users.longitude, user_map.user_color
         FROM users
         JOIN user_map ON users.id = user_map.user_id
         WHERE user_map.map_id = :map_id
@@ -266,7 +292,7 @@ def map_view():
     
     territories = db.session.execute(
         text("""
-            SELECT user_id, area, coordinates
+            SELECT user_id, area, coordinates, color
             FROM territories
             WHERE map_id = :map_id
         """),
@@ -277,7 +303,8 @@ def map_view():
         territories_list.append({
             "user_id": t["user_id"],
             "area": t["area"],
-            "coordinates": json.loads(t["coordinates"]) 
+            "coordinates": json.loads(t["coordinates"]),
+            "color": t["color"] 
         })
 
     # Leaderboard
@@ -287,7 +314,7 @@ def map_view():
                 users.id AS user_id,
                 users.username,
                 user_map.user_score,
-                user_map.user_colour
+                user_map.user_color
             FROM user_map
             JOIN users ON users.id = user_map.user_id
             WHERE user_map.map_id = :map_id
@@ -340,27 +367,45 @@ def territory_created(data):
 
     map_id = data["map_id"]
     coordinates = data["coordinates"]
+    color = data["color"]
 
     area = polygon_area(coordinates)
+    
     coordinates_json=json.dumps(coordinates)
     # Save territory to db
     territory = Territory(
         map_id=map_id,
         user_id=user_id,
         coordinates=coordinates_json,
-        area=area
+        area=area,
+        color=color
     )
     db.session.add(territory)
 
     # Update user score to db
-    user_map = User_Map.query.filter_by(
-        username=username,
-        map_id=map_id
-    ).first()
-
-    user_map.user_score += area
+    db.session.execute(
+    text("""
+        UPDATE user_map
+        SET user_score = user_score + :points
+        WHERE user_id = :user_id
+          AND map_id = :map_id
+    """),
+    {
+        "points": (area*10015*(10**5))//1, # approx 1 point per 10 meters sq
+        "user_id": user_id,
+        "map_id": map_id
+    }
+)
     db.session.commit()
-
+    new_score = db.session.execute(
+    text("""
+        SELECT user_score
+        FROM user_map
+        WHERE user_id = :user_id
+          AND map_id = :map_id
+    """),
+    {"user_id": user_id, "map_id": map_id}
+).scalar()
     # Broadcast to everyone in map
     emit("new_territory", {
         "coordinates": coordinates,
@@ -369,8 +414,8 @@ def territory_created(data):
     }, room=f"map_{map_id}")
     
     emit("score_updated", {
-        "username": user_id,
-        "new_score": user_map.user_score
+        "username": username,
+        "new_score": new_score
     }, room=f"map_{map_id}")
 
 
@@ -384,11 +429,17 @@ def polygon_area(coordinates):
         lat2, lon2 = coordinates[(i + 1) % n]
         area += lon1 * lat2
         area -= lon2 * lat1
+    print("Computed area:", abs(area) / 2)
+    return (abs(area) / 2)
 
-    return abs(area) / 2
 
-
-
+def name2color(name):
+    # color made from their name so consistent across maps and unique per user
+    hash_code = sum(ord(c) for c in name)
+    r = (hash_code * 123) % 256
+    g = (hash_code * 456) % 256
+    b = (hash_code * 789) % 256
+    return f'#{r:02x}{g:02x}{b:02x}'
 
 
 
