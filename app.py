@@ -6,6 +6,7 @@ from sqlalchemy.sql import text
 from datetime import timedelta
 import math
 import json
+from game_models import Player, GameMap
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
@@ -68,7 +69,7 @@ def home():
 
     return render_template('home.html')
 
-#-- 'late registration' - Ye
+#-- 'late registration' - taiYelolu
 @app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
