@@ -29,6 +29,7 @@
         </ul>
     </div>
 </div>
+    
 
   
 
@@ -41,6 +42,7 @@
     const startLon = {{ user.longitude|default(0, true) }};
     let currentLat = startLat;
     let currentLon = startLon;
+    const userId = {{ session['user_id'] }};
     const friends = {{ friends|tojson }};
     const territories = {{ territories|tojson }};
     let scores = {};
@@ -51,6 +53,7 @@
 
     const map = L.map('map').setView([startLat, startLon], 13);
     const socket = io();
+    
     
     socket.emit('join_map', { map_id: mapID });
 
@@ -68,8 +71,8 @@
     territories.forEach(t => {
         L.polygon(t.coordinates, {
             color: t.color,
-            fillcolor: t.color,
-            fillOpacity: 1
+            fillColor: t.color,
+            fillOpacity: 0.7
         }).addTo(map);
     });
 
@@ -78,7 +81,7 @@
 
     userMarker = L.circleMarker(
         [startLat, startLon],
-        { title: "You ({{ user.username }})", radius: 10, color: ucolor, fillcolor: ucolor, fillOpacity: 0.8 })
+        { title: "You ({{ user.username }})", radius: 10, color: ucolor, fillColor: ucolor, fillOpacity: 0.8 })
         .addTo(map)
         .bindPopup("You ({{ user.username }})")
         .openPopup();
@@ -90,14 +93,20 @@
         const fLat = friend.latitude;
         const fLon = friend.longitude;
         const fcolor = friend.user_color;
+        const isOnline = friend.is_online;
         
         if (fLat !== 0 && fLon !== 0) {
-            const marker = L.circleMarker(
-                [fLat, fLon],
-                { radius: 8, color: fcolor, fillColor: fcolor, fillOpacity: 0.8 }
-            ).addTo(map).bindPopup(friend.username);
+        const marker = L.circleMarker(
+            [fLat, fLon],
+            { 
+                radius: 8, 
+                color: fcolor, 
+                fillColor: fcolor, 
+                fillOpacity: isOnline ? 0.8 : 0.3  // Dim if offline
+            }
+        ).addTo(map).bindPopup(friend.username + (isOnline ? " 🟢" : " 🔴"));
 
-            friendMarkers.push({ id: friend.id, marker });
+        friendMarkers.push({ id: friend.id, marker, username: friend.username } );
         }
     });
 
@@ -121,31 +130,8 @@ function updateTrail(lat, lon) {
             className: "trail"
         }).addTo(map);
 
-        // Close loop -> territory -> points
-        if (trailPoints.length > 10 && map.distance(trailPoints[0], [lat, lon]) < 10) {
-
-            const polygon = L.polygon(trailPoints, {
-                color: ucolor,
-                fillColor: ucolor,
-                fillOpacity: 0.67
-            }).addTo(map);
-            
-            
-            
-
-            socket.emit("territory_created", {
-                map_id: mapID,
-                coordinates: trailPoints.slice(),
-                color: ucolor
-                
-            });
-
-            trailPoints = [];
-            map.removeLayer(trailLine);
-            trailLine = null;
-        }
+        // loop detction moved to backend
     }
-
 
 
 
@@ -165,6 +151,7 @@ function updateLeaderboard() {
 // SEND ME THE LOCATION 
 
 function handlePosition(lat, lon) {
+    
     currentLat = lat;
     currentLon = lon;
     userMarker.setLatLng([lat, lon]);
@@ -172,13 +159,14 @@ function handlePosition(lat, lon) {
 
     socket.emit("update_location", {
         map_id: mapID,
+        user_id: userId,
         latitude: lat,
         longitude: lon
     });
 }
     
 // simulated movenent
-const radius = 0.001;     
+const radius = 0.002;     
 const steps = 72;        
 let step = 0;
 let movementInterval = null;
@@ -226,6 +214,8 @@ document.addEventListener("keydown", e => {
         }
     }
 });
+
+// GPS tracking
 let watchId = null;
 
 if ("geolocation" in navigator) {
@@ -255,7 +245,8 @@ if ("geolocation" in navigator) {
     
     
     
-   // socket eventss
+   ////////////// socket eventss
+
     socket.on("player_moved", data => {
         const friend = friendMarkers.find(f => f.id === data.user_id);
         if (friend) {
@@ -266,11 +257,21 @@ if ("geolocation" in navigator) {
     socket.on("new_territory", data => {
         L.polygon(data.coordinates, {
             color: data.color,
-            fillcolor: data.color,
-            fillOpacity: 1
+            fillColor: data.color,
+            fillOpacity: 0.8
         }).addTo(map);
     });
-   updateLeaderboard()
+    socket.on("clear_trail", data => {
+        
+        if (data.user_id === userId) {
+            trailPoints = [];
+            if (trailLine) {
+                map.removeLayer(trailLine);
+                trailLine = null;
+            }
+        }
+    });
+
 
     socket.on("score_updated", data => {
     scores[data.username] = data.new_score;

@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from flask_session import Session
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room
@@ -6,19 +7,20 @@ from sqlalchemy.sql import text
 from datetime import timedelta
 import math
 import json
-from game_models import Player, GameMap
+from game_models import Player, GameMap, GameController, GameTerritory
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase3.db'
 app.config['JWT_SECRET_KEY'] = 'dot.dot.'
 app.config['SECRET_KEY']= '.dot.dot'
+app.config['SESSION_TYPE'] = 'filesystem'
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
+socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
 
-socketio = SocketIO(app, cors_allowed_origins="*")
-
+active_games = {}  # map_id -> GameMap instance
 
 ################. DATABASE MODELS #####################
 
@@ -27,8 +29,9 @@ class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(100), nullable=False)
-    latitude = db.Column(db.Float, nullable=True)
-    longitude = db.Column(db.Float, nullable=True)
+    latitude = db.Column(db.Float, server_default='0.0', nullable=False)
+    longitude = db.Column(db.Float, server_default='0.0', nullable=False)
+    is_online = db.Column(db.Integer, server_default='0', nullable=False)  # 0 = offline, 1 = online
     
 class Maps_Data(db.Model):
     __tablename__ = 'maps_data'
@@ -62,6 +65,56 @@ class Territory(db.Model):
 
 with app.app_context():
     db.create_all()
+
+################. HELPERS #####################
+
+
+def get_or_create_game(map_id):
+    
+    if map_id not in active_games:
+        active_games[map_id] = GameMap(map_id)
+        
+        # Load other players from database
+        users_in_map = db.session.execute(
+            text("""
+                SELECT users.id, users.username, user_map.user_color
+                FROM users
+                JOIN user_map ON users.id = user_map.user_id
+                WHERE user_map.map_id = :map_id
+            """),
+            {'map_id': map_id}
+        ).fetchall()
+        
+        for user in users_in_map:
+            player = Player(user.id, user.username, user.user_color)
+            active_games[map_id].add_player(player)
+        
+        # Load existing territories
+        territories = db.session.execute(
+            text("""
+                SELECT user_id, coordinates, color
+                FROM territories
+                WHERE map_id = :map_id
+            """),
+            {'map_id': map_id}
+        ).fetchall()
+        
+        for terr in territories:
+            
+            polygon = json.loads(terr.coordinates)
+            territory = GameTerritory(terr.user_id, polygon)
+            active_games[map_id].add_territory(territory)
+    
+    return active_games[map_id]
+
+def name2color(name):
+    # color made from their name so consistent across maps and unique per user
+    hash_code = sum(ord(c) for c in name)
+    r = (hash_code * 123) % 256
+    g = (hash_code * 456) % 256
+    b = (hash_code * 789) % 256
+    return f'#{r:02x}{g:02x}{b:02x}'
+
 
 ################. ROUTES #####################
 @app.route('/')
@@ -254,7 +307,17 @@ def map_view():
     if 'user_id' not in session:
         return redirect(url_for('home'))
 
-    map_id = request.args.get('map_id')
+    map_id = int(request.args.get('map_id'))
+
+
+    game_map = get_or_create_game(map_id)
+
+    # Ensure current user is added to the game
+    if session['user_id'] not in game_map.players:
+        user_color = name2color(session['username'])
+        player = Player(session['user_id'], session['username'], user_color)
+        game_map.add_player(player)
+
     map_data = db.session.execute(
         text(" SELECT * FROM maps_data WHERE id = :map_id "),
         {'map_id': map_id}
@@ -262,7 +325,7 @@ def map_view():
 
     user = db.session.execute(
         text("""
-            SELECT users.username, users.latitude, users.longitude , user_map.user_color
+            SELECT users.username, users.latitude, users.longitude , user_map.user_color, users.is_online
             FROM users 
             JOIN user_map ON users.id = user_map.user_id
             WHERE user_map.map_id = :map_id
@@ -277,7 +340,7 @@ def map_view():
     
     friends = db.session.execute(
     text("""
-        SELECT users.username, users.latitude, users.longitude, user_map.user_color
+        SELECT users.id, users.username, users.latitude, users.longitude, user_map.user_color, users.is_online
         FROM users
         JOIN user_map ON users.id = user_map.user_id
         WHERE user_map.map_id = :map_id
@@ -332,16 +395,57 @@ def map_view():
                             territories=territories_list,
                             leaderboard=leaderboard_list)
 
+@app.route('/logout')
+def logout():
+    user_id = session.get('user_id')
+    if user_id:
+        db.session.execute(
+            text("UPDATE users SET is_online = 0 WHERE id = :user_id"),
+            {'user_id': user_id}
+        )
+        db.session.commit()
+    
+    session.clear()
+    flash('Logged out successfully.')
+    return redirect(url_for('home'))
+
 
 
 ##############. SOCKET.IO EVENTS #####################
+
+
 @socketio.on("join_map")
 def join_map_room(data):
-    join_room(f"map_{data['map_id']}")
+    map_id = data['map_id']
+    join_room(f"map_{map_id}")
+
+    user_id = session.get('user_id')
+    
+    if user_id:
+        # Mark user as online
+        db.session.execute(
+            text("UPDATE users SET is_online = 1 WHERE id = :user_id"),
+            {'user_id': user_id}
+        )
+        db.session.commit()
+        print(f"🟢 User {user_id} marked as online")
+    
+    game_map = get_or_create_game(map_id)
+    
+    if user_id and user_id not in game_map.players:
+        username = session.get('username')
+        color = name2color(username)
+        player = Player(user_id, username, color)
+        game_map.add_player(player)
 
 @socketio.on("update_location")
 def update_location_socket(data):
-    user_id = session.get("user_id")
+    user_id = data.get("user_id") or session.get("user_id")
+    
+    
+    if not user_id:
+        return
+    
     lat = data["latitude"]
     lon = data["longitude"]
     map_id = data["map_id"]
@@ -351,96 +455,85 @@ def update_location_socket(data):
         {'lat': lat, 'lon': lon, 'u': user_id}
     )
     db.session.commit()
+    # Update game state
+    game_map = get_or_create_game(map_id)
+    game_controller = GameController(game_map)
+    
+    # This will check for loop completion and create territory if needed
+    territory = game_controller.update_player_position(user_id, lat, lon)
+    
+    if territory:
+        # A loop was completed! Save to database
+        color = game_map.get_player(user_id).color
+        coordinates_json = json.dumps(territory.polygon)
+        
+        db_territory = Territory(
+            map_id=map_id,
+            user_id=user_id,
+            coordinates=coordinates_json,
+            area=territory.area,
+            color=color
+        )
+        db.session.add(db_territory)
+        
+        # Update score
+        points = int(territory.area * 10015 * (10**5))
+        db.session.execute(
+            text("""
+                UPDATE user_map
+                SET user_score = user_score + :points
+                WHERE user_id = :user_id AND map_id = :map_id
+            """),
+            {"points": points, "user_id": user_id, "map_id": map_id}
+        )
+        db.session.commit()
+        
+        new_score = db.session.execute(
+            text("""
+                SELECT user_score FROM user_map
+                WHERE user_id = :user_id AND map_id = :map_id
+            """),
+            {"user_id": user_id, "map_id": map_id}
+        ).scalar()
+        
+        # Broadcast new territory
+        emit("new_territory", {
+            "coordinates": territory.polygon,
+            "user_id": user_id,
+            "area": territory.area,
+            "color": color
+        }, room=f"map_{map_id}")
+        
+        username = session.get('username')
+        emit("score_updated", {
+            "username": username,
+            "new_score": new_score
+        }, room=f"map_{map_id}")
+        
+        # Send trail cleared event
+        emit("clear_trail", {"user_id": user_id}, room=f"map_{map_id}")
+    
+    # Broadcast position update
+    emit("player_moved", {
+        "user_id": user_id,
+        "lat": lat,
+        "lon": lon
+    }, room=f"map_{map_id}", include_self=False)
 
-    emit(
-        "player_moved",
-        {"user_id": user_id, "lat": lat, "lon": lon},
-        room=f"map_{map_id}",
-        include_self=False
-    )
-
-@socketio.on("territory_created")
-def territory_created(data):
+@socketio.on("disconnect")
+def handle_disconnect():
     user_id = session.get("user_id")
-    username = session.get("username")
-    if not user_id:
-        return
-
-    map_id = data["map_id"]
-    coordinates = data["coordinates"]
-    color = data["color"]
-
-    area = polygon_area(coordinates)
     
-    coordinates_json=json.dumps(coordinates)
-    # Save territory to db
-    territory = Territory(
-        map_id=map_id,
-        user_id=user_id,
-        coordinates=coordinates_json,
-        area=area,
-        color=color
-    )
-    db.session.add(territory)
-
-    # Update user score to db
-    db.session.execute(
-    text("""
-        UPDATE user_map
-        SET user_score = user_score + :points
-        WHERE user_id = :user_id
-          AND map_id = :map_id
-    """),
-    {
-        "points": (area*10015*(10**5))//1, # approx 1 point per 10 meters sq
-        "user_id": user_id,
-        "map_id": map_id
-    }
-)
-    db.session.commit()
-    new_score = db.session.execute(
-    text("""
-        SELECT user_score
-        FROM user_map
-        WHERE user_id = :user_id
-          AND map_id = :map_id
-    """),
-    {"user_id": user_id, "map_id": map_id}
-).scalar()
-    # Broadcast to everyone in map
-    emit("new_territory", {
-        "coordinates": coordinates,
-        "user_id": user_id,
-        "area": area
-    }, room=f"map_{map_id}")
+    if user_id:
+        db.session.execute(
+            text("UPDATE users SET is_online = 0 WHERE id = :user_id"),
+            {'user_id': user_id}
+        )
+        db.session.commit()
+        print(f"🔴 User {user_id} disconnected and marked offline")
     
-    emit("score_updated", {
-        "username": username,
-        "new_score": new_score
-    }, room=f"map_{map_id}")
 
 
-def polygon_area(coordinates):
-    # Shoelace/ Gause area formula
-    area = 0
-    n = len(coordinates)
-
-    for i in range(n):
-        lat1, lon1 = coordinates[i]
-        lat2, lon2 = coordinates[(i + 1) % n]
-        area += lon1 * lat2
-        area -= lon2 * lat1
-    print("Computed area:", abs(area) / 2)
-    return (abs(area) / 2)
-
-
-def name2color(name):
-    # color made from their name so consistent across maps and unique per user
-    hash_code = sum(ord(c) for c in name)
-    r = (hash_code * 123) % 256
-    g = (hash_code * 456) % 256
-    b = (hash_code * 789) % 256
-    return f'#{r:02x}{g:02x}{b:02x}'
 
 
 

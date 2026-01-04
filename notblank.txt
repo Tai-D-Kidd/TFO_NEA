@@ -64,5 +64,5 @@ function simulateCircularMovement() {
 // Run every 500ms
 setInterval(simulateCircularMovement, 500);
     
-
+🔴 and 🟢
 

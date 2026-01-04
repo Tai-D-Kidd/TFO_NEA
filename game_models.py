@@ -29,7 +29,7 @@ class Player:
 # Territory Class
 
 
-class Territory:
+class GameTerritory:
     def __init__(self, owner_id, polygon):
         
         self.owner_id = owner_id
@@ -130,5 +130,5 @@ class GameController:
 
     def create_territory(self, player):
         polygon = player.trail.copy()
-        return Territory(player.user_id, polygon)
+        return GameTerritory(player.user_id, polygon)
 
