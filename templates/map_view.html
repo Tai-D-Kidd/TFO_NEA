@@ -59,11 +59,10 @@
 
 
     // Add Map layer on top 
-    L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.{ext}', {
-	minZoom: 0,
-	maxZoom: 20,
-	attribution: '&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-	ext: 'png'
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20
     }).addTo(map);
 // game stuff
     
@@ -104,7 +103,7 @@
                 fillColor: fcolor, 
                 fillOpacity: isOnline ? 0.8 : 0.3  // Dim if offline
             }
-        ).addTo(map).bindPopup(friend.username + (isOnline ? " 🟢" : " 🔴"));
+        ).addTo(map).bindPopup(friend.username + (isOnline ? " (ON)" : " (OFF)"));
 
         friendMarkers.push({ id: friend.id, marker, username: friend.username } );
         }
@@ -116,7 +115,11 @@
     // trails
     let trailPoints = [];
     let trailLine = null;
-    
+    let friendTrails = {};
+
+    friends.forEach(friend => {
+        friendTrails[friend.id] = null;
+    });
 
 
 function updateTrail(lat, lon) {
@@ -150,6 +153,8 @@ function updateLeaderboard() {
 
 // SEND ME THE LOCATION 
 
+
+// fake move for testing 
 function handlePosition(lat, lon) {
     
     currentLat = lat;
@@ -165,55 +170,74 @@ function handlePosition(lat, lon) {
     });
 }
     
-// simulated movenent
-const radius = 0.002;     
-const steps = 72;        
-let step = 0;
-let movementInterval = null;
-let simulationEnabled = false;
-let simCenterLat = null;
-let simCenterLon = null;
-let simStartAngle = 0;
+let arrowKeyMode = false;
+const moveStep = 0.0001;  
+let realGPSLat = startLat;  // Store real GPS position
+let realGPSLon = startLon;
 
-
-function simulateCircularMovement() {
-    if (step > steps) {
-        clearInterval(movementInterval);
-        movementInterval = null;
-        step = 0;
-        return;
+function enableArrowKeyMode() {
+    arrowKeyMode = !arrowKeyMode;
+    
+    const indicator = document.getElementById('arrow-mode-indicator');
+    if (arrowKeyMode) {
+        console.log("Arrow key mode ON");
+        indicator.style.display = 'block';
+        indicator.textContent = 'Test Mode: Use Arrow Keys';
+        indicator.style.background = '#4CAF50';
+    } else {
+        console.log("GPS mode ON");
+        indicator.style.display = 'block';
+        indicator.textContent = 'GPS Mode: Real Location';
+        indicator.style.background = '#2196F3';
+        
+        // Return to real GPS position
+        if (realGPSLat !== 0 && realGPSLon !== 0) {
+            handlePosition(realGPSLat, realGPSLon);
+        }
+        // leave aafter 2s
+        setTimeout(() => {
+            indicator.style.display = 'none';
+        }, 2000);
     }
-
-    const angle = simStartAngle + (step / steps) * 2 * Math.PI;
-
-    let lat = simCenterLat + radius * Math.cos(angle);
-    let lon = simCenterLon + radius * Math.sin(angle);
-
-    handlePosition(lat, lon);
-    step++; // +=1 in js
 }
 
-
 document.addEventListener("keydown", e => {
-    if (e.key.toLowerCase() === "s") {
-        simulationEnabled = !simulationEnabled;
-
-        if (simulationEnabled) {
-            console.log("🟢 Simulation ON");
-            const startAngle = 0;
-            simCenterLat = currentLat - radius * Math.cos(startAngle);
-            simCenterLon = currentLon - radius * Math.sin(startAngle);
-            simStartAngle = startAngle;
-
-            step = 0;
-            movementInterval = setInterval(simulateCircularMovement, 400);
-        } else {
-            console.log("🔴 Simulation OFF");
-            clearInterval(movementInterval);
-            movementInterval = null;
+    // Toggle mode with 'T' key (Test mode)
+    if (e.key.toLowerCase() === "t") {
+        enableArrowKeyMode();
+        return;
+    }
+    
+    // Arrow key movement
+    if (arrowKeyMode) {
+        let newLat = currentLat;
+        let newLon = currentLon;
+        
+        switch(e.key) {
+            case "ArrowUp":
+                newLat += moveStep;
+                e.preventDefault();
+                break;
+            case "ArrowDown":
+                newLat -= moveStep;
+                e.preventDefault();
+                break;
+            case "ArrowLeft":
+                newLon -= moveStep;
+                e.preventDefault();
+                break;
+            case "ArrowRight":
+                newLon += moveStep;
+                e.preventDefault();
+                break;
+            default:
+                return;
         }
+        
+        handlePosition(newLat, newLon);
     }
 });
+
 
 // GPS tracking
 let watchId = null;
@@ -221,7 +245,7 @@ let watchId = null;
 if ("geolocation" in navigator) {
     watchId = navigator.geolocation.watchPosition(
         pos => {
-            if (simulationEnabled) return;
+            if (arrowKeyMode) return;
 
             handlePosition(
                 pos.coords.latitude,
@@ -237,12 +261,6 @@ if ("geolocation" in navigator) {
     );
 }
     
-
-    
-    
-        
-
-    
     
     
    ////////////// socket eventss
@@ -251,8 +269,46 @@ if ("geolocation" in navigator) {
         const friend = friendMarkers.find(f => f.id === data.user_id);
         if (friend) {
             friend.marker.setLatLng([data.lat, data.lon]);
+
+            // Updating their trail
+            if (data.trail && data.trail.length > 0) {
+            // Remove old trail
+            if (friendTrails[data.user_id]) {
+                map.removeLayer(friendTrails[data.user_id]);
+            }
+            
+            // coloour for friend
+            const friendData = friends.find(f => f.id === data.user_id);
+            const friendColor = friendData ? friendData.user_color : '#FFFFFF';
+            
+            // Draw new trail
+            friendTrails[data.user_id] = L.polyline(data.trail, {
+                color: friendColor,
+                weight: 3,
+                opacity: 0.6,
+                className: "friend-trail"
+            }).addTo(map);
+        }
         }
     });
+
+    socket.on("trail_broken", data => {
+    if (data.broken_user_id === userId) {
+        // Your trail was broken!
+        alert("Your trail was broken by another player!");
+        trailPoints = [];
+        if (trailLine) {
+            map.removeLayer(trailLine);
+            trailLine = null;
+        }
+    } else {
+        // Someone else's trail was broken
+        if (friendTrails[data.broken_user_id]) {
+            map.removeLayer(friendTrails[data.broken_user_id]);
+            friendTrails[data.broken_user_id] = null;
+        }
+    }
+});
 
     socket.on("new_territory", data => {
         L.polygon(data.coordinates, {
@@ -269,7 +325,13 @@ if ("geolocation" in navigator) {
                 map.removeLayer(trailLine);
                 trailLine = null;
             }
-        }
+        } else {
+        // Clear friend's trail
+            if (friendTrails[data.user_id]) {
+                map.removeLayer(friendTrails[data.user_id]);
+                friendTrails[data.user_id] = null;
+            }
+    }
     });
 
 

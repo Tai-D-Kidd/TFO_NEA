@@ -428,7 +428,7 @@ def join_map_room(data):
             {'user_id': user_id}
         )
         db.session.commit()
-        print(f"🟢 User {user_id} marked as online")
+        print(f"User {user_id} marked as online")
     
     game_map = get_or_create_game(map_id)
     
@@ -458,6 +458,15 @@ def update_location_socket(data):
     # Update game state
     game_map = get_or_create_game(map_id)
     game_controller = GameController(game_map)
+    player = game_map.get_player(user_id)
+
+    broken_by = game_controller.check_trail_collision(user_id, lat, lon)
+    if broken_by:
+        print(f"Player {broken_by} broke Player {user_id}'s trail!")
+        emit("trail_broken", {
+            "broken_user_id": broken_by,
+            "breaker_user_id": user_id
+        }, room=f"map_{map_id}")
     
     # This will check for loop completion and create territory if needed
     territory = game_controller.update_player_position(user_id, lat, lon)
@@ -477,7 +486,7 @@ def update_location_socket(data):
         db.session.add(db_territory)
         
         # Update score
-        points = int(territory.area * 10015 * (10**5))
+        points = int(territory.area * 10015 * (10**5))  # circa 1 pint per 10 sqm
         db.session.execute(
             text("""
                 UPDATE user_map
@@ -517,7 +526,8 @@ def update_location_socket(data):
     emit("player_moved", {
         "user_id": user_id,
         "lat": lat,
-        "lon": lon
+        "lon": lon,
+        "trail": player.trail
     }, room=f"map_{map_id}", include_self=False)
 
 @socketio.on("disconnect")
@@ -530,7 +540,7 @@ def handle_disconnect():
             {'user_id': user_id}
         )
         db.session.commit()
-        print(f"🔴 User {user_id} disconnected and marked offline")
+        print(f"User {user_id} disconnected and marked offline")
     
 
 

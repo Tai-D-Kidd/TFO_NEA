@@ -80,3 +80,20 @@ body {
     font-weight: 600;
     color: #333;
 }
+
+.friend-trail {
+    opacity: 0.6;
+    stroke-dasharray: 5, 5;
+    animation: dash 20s linear infinite;
+}
+
+.trail {
+    opacity: 0.8;
+    animation: dash 20s linear infinite;
+}
+
+@keyframes dash {
+    to {
+        stroke-dashoffset: -1000;
+    }
+}

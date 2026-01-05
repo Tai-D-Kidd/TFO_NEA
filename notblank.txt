@@ -64,6 +64,8 @@ function simulateCircularMovement() {
 // Run every 500ms
 setInterval(simulateCircularMovement, 500);
     
-🔴 and 🟢
+
 
 using ngrok of semi online
+cd ~/Downloads
+./ngrok http 5000
