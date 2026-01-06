@@ -45,6 +45,7 @@
     const userId = {{ session['user_id'] }};
     const friends = {{ friends|tojson }};
     const territories = {{ territories|tojson }};
+    const trails = {{ trails|tojson }};
     let scores = {};
 
     {% for row in leaderboard %}
@@ -74,7 +75,30 @@
             fillOpacity: 0.7
         }).addTo(map);
     });
-
+    // existing trails
+    trails.forEach(t => {
+    if (t.user_id === userId) {
+        // Your trail
+        trailPoints = t.coordinates;
+        if (trailPoints.length > 0) {
+            trailLine = L.polyline(trailPoints, {
+                color: ucolor,
+                weight: 4,
+                className: "trail"
+            }).addTo(map);
+        }
+    } else {
+        // Other players' trails
+        if (t.coordinates.length > 0) {
+            friendTrails[t.user_id] = L.polyline(t.coordinates, {
+                color: t.color,
+                weight: 3,
+                opacity: 0.6,
+                className: "friend-trail"
+            }).addTo(map);
+        }
+    }
+});
     // Add user's marker
     const ucolor = "{{ user.user_color }}";
 

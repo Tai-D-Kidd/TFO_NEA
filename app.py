@@ -63,6 +63,15 @@ class Territory(db.Model):
     area = db.Column(db.Float, nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
+class Trail(db.Model):
+    __tablename__ = 'trails'
+    id = db.Column(db.Integer, primary_key=True)
+    map_id = db.Column(db.Integer, db.ForeignKey('maps_data.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    coordinates = db.Column(db.Text, nullable=False)  
+    color = db.Column(db.String(7), nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
 with app.app_context():
     db.create_all()
 
@@ -371,6 +380,24 @@ def map_view():
             "color": t["color"] 
         })
 
+    # Load existing trails
+    trails = db.session.execute(
+        text("""
+            SELECT user_id, coordinates, color
+            FROM trails
+            WHERE map_id = :map_id
+        """),
+        {"map_id": map_id}
+    ).mappings().all()
+    
+    trails_list = []
+    for t in trails:
+        trails_list.append({
+            "user_id": t["user_id"],
+            "coordinates": json.loads(t["coordinates"]),
+            "color": t["color"]
+        })
+
     # Leaderboard
     leaderboard = db.session.execute(
         text("""
@@ -393,6 +420,7 @@ def map_view():
                             user=user, 
                             friends=friends_list, 
                             territories=territories_list,
+                            trails=trails_list,
                             leaderboard=leaderboard_list)
 
 @app.route('/logout')
@@ -463,6 +491,14 @@ def update_location_socket(data):
     broken_by = game_controller.check_trail_collision(user_id, lat, lon)
     if broken_by:
         print(f"Player {broken_by} broke Player {user_id}'s trail!")
+
+        # Delete broken trail from database
+        db.session.execute(
+            text("DELETE FROM trails WHERE map_id = :map_id AND user_id = :user_id"),
+            {'map_id': map_id, 'user_id': broken_by}
+        )
+        db.session.commit()
+
         emit("trail_broken", {
             "broken_user_id": broken_by,
             "breaker_user_id": user_id
@@ -472,7 +508,14 @@ def update_location_socket(data):
     territory = game_controller.update_player_position(user_id, lat, lon)
     
     if territory:
-        # A loop was completed! Save to database
+        # A loop was completed > to database
+
+        # Territory created - delete trail from database
+        db.session.execute(
+            text("DELETE FROM trails WHERE map_id = :map_id AND user_id = :user_id"),
+            {'map_id': map_id, 'user_id': user_id}
+        )
+
         color = game_map.get_player(user_id).color
         coordinates_json = json.dumps(territory.polygon)
         
@@ -521,7 +564,34 @@ def update_location_socket(data):
         
         # Send trail cleared event
         emit("clear_trail", {"user_id": user_id}, room=f"map_{map_id}")
-    
+    else:
+         # Update/create trail in database
+        existing_trail = db.session.execute(
+            text("SELECT coordinates FROM trails WHERE map_id = :map_id AND user_id = :user_id"),
+            {'map_id': map_id, 'user_id': user_id}
+        ).fetchone()
+        
+        if existing_trail:
+            # Update existing trail
+            trail_coords = json.loads(existing_trail.coordinates)
+            trail_coords.append([lat, lon])
+            
+            db.session.execute(
+                text("UPDATE trails SET coordinates = :coords WHERE map_id = :map_id AND user_id = :user_id"),
+                {'coords': json.dumps(trail_coords), 'map_id': map_id, 'user_id': user_id}
+            )
+        else:
+            # Create new trail
+            color = game_map.get_player(user_id).color
+            db_trail = Trail(
+                map_id=map_id,
+                user_id=user_id,
+                coordinates=json.dumps([[lat, lon]]),
+                color=color
+            )
+            db.session.add(db_trail)
+        
+        db.session.commit()
     # Broadcast position update
     emit("player_moved", {
         "user_id": user_id,
