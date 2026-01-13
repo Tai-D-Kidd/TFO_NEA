@@ -37,6 +37,7 @@
 
   <script>
     let friendMarkers = [];
+    let trailPoints = [];
     const mapID = {{ map_data.id }};
     const startLat = {{ user.latitude|default(0, true) }};
     const startLon = {{ user.longitude|default(0, true) }};
@@ -47,6 +48,9 @@
     const territories = {{ territories|tojson }};
     const trails = {{ trails|tojson }};
     let scores = {};
+    const ucolor = "{{ user.user_color }}";
+    let trailLine = null;
+    let friendTrails = {};
 
     {% for row in leaderboard %}
         scores["{{ row.username }}"] = {{ row.user_score }};
@@ -79,6 +83,7 @@
     trails.forEach(t => {
     if (t.user_id === userId) {
         // Your trail
+        console.log("Loading your trail");
         trailPoints = t.coordinates;
         if (trailPoints.length > 0) {
             trailLine = L.polyline(trailPoints, {
@@ -100,7 +105,7 @@
     }
 });
     // Add user's marker
-    const ucolor = "{{ user.user_color }}";
+    
 
     userMarker = L.circleMarker(
         [startLat, startLon],
@@ -137,9 +142,8 @@
 
 
     // trails
-    let trailPoints = [];
-    let trailLine = null;
-    let friendTrails = {};
+    
+    
 
     friends.forEach(friend => {
         friendTrails[friend.id] = null;
