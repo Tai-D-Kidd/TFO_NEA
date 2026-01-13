@@ -11,7 +11,7 @@ from game_models import Player, GameMap, GameController, GameTerritory
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase3.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase4.db'
 app.config['JWT_SECRET_KEY'] = 'dot.dot.'
 app.config['SECRET_KEY']= '.dot.dot'
 app.config['SESSION_TYPE'] = 'filesystem'
