@@ -8,6 +8,7 @@ from datetime import timedelta
 import math
 import json
 from game_models import Player, GameMap, GameController, GameTerritory
+import re
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
@@ -153,7 +154,15 @@ def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-    
+        
+
+        # pwd reqs check
+
+        if len(password) < 8 or not re.search(r'[A-Z]', password) or \
+           not re.search(r'[a-z]', password) or not re.search(r'[0-9]', password):
+            flash('Password does not meet requirements')
+            return redirect(url_for('register'))
+        
         result = db.session.execute(
             text(" SELECT * FROM users WHERE username = :username "), {'username': username}
         ).fetchone() #returns True if user in db

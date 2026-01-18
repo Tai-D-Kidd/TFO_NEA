@@ -1,0 +1,66 @@
+@import url("baseform.css");
+
+.password-requirements {
+    text-align: left;
+    margin-top: 15px;
+    padding: 15px;
+    background: #e0e5ec;
+    border-radius: 12px;
+    box-shadow: inset 4px 4px 8px #b8bec7,
+                inset -4px -4px 8px #ffffff;
+    font-size: 13px;
+}
+
+.requirement {
+    margin: 8px 0;
+    color: #666;
+    transition: color 0.3s;
+}
+
+.requirement.met {
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.requirement.unmet {
+    color: #f44336;
+}
+
+.requirement::before {
+    content: "○ ";
+    margin-right: 5px;
+}
+
+.requirement.met::before {
+    content: "✓ ";
+}
+
+.requirement.unmet::before {
+    content: "✗ ";
+}
+
+.strength-meter {
+    height: 8px;
+    background: #e0e5ec;
+    border-radius: 10px;
+    margin-top: 10px;
+    box-shadow: inset 3px 3px 6px #b8bec7,
+                inset -3px -3px 6px #ffffff;
+    overflow: hidden;
+}
+
+.strength-bar {
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s, background-color 0.3s;
+    border-radius: 10px;
+}
+
+.strength-weak { width: 33%; background: #f44336; }
+.strength-medium { width: 66%; background: #ff9800; }
+.strength-strong { width: 100%; background: #4CAF50; }
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

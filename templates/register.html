@@ -3,23 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <title>Register</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='baseform.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
 
     
 </head>
 <body>
 
-    <div class="container">
+    <<div class="container">
         <h2>Register</h2>
 
-        <form action="/register" method="POST">
-            <input name="username" placeholder="Username" required>
-            <input name="password" type="password" placeholder="Password" required>
-            <button type="submit">Sign Up</button>
+        <form action="/register" method="POST" id="registerForm">
+            <input name="username" id="username" placeholder="Username" required>
+            <input name="password" id="password" type="password" placeholder="Password" required>
+            
+            <div class="password-requirements">
+                <div class="requirement" id="req-length">At least 8 characters</div>
+                <div class="requirement" id="req-upper">One uppercase letter</div>
+                <div class="requirement" id="req-lower">One lowercase letter</div>
+                <div class="requirement" id="req-number">One number</div>
+                <div class="requirement" id="req-special">One special character (!@#$%^&*)</div>
+                
+                <div class="strength-meter">
+                    <div class="strength-bar" id="strengthBar"></div>
+                </div>
+            </div>
+            
+            <button type="submit" id="submitBtn" disabled>Sign Up</button>
         </form>
 
         <p>Already have an account? <a href="/">Login</a></p>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <ul style="list-style: none; padding: 0; margin-top: 20px;">
+                    {% for msg in messages[-1:] %}
+                        <li style="background: #e0e5ec; padding: 12px; margin-bottom: 10px; border-radius: 12px; box-shadow: inset 6px 6px 12px #b8bec7, inset -6px -6px 12px #ffffff; color: #f44336;">{{ msg }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const password = document.getElementById('password');
+            const submitBtn = document.getElementById('submitBtn');
+            const strengthBar = document.getElementById('strengthBar');
+            const form = document.getElementById('registerForm');
+            
+            // reges for password reqs
+            const requirements = {
+                length: { element: document.getElementById('req-length'), regex: /.{8,}/ },
+                upper: { element: document.getElementById('req-upper'), regex: /[A-Z]/ },
+                lower: { element: document.getElementById('req-lower'), regex: /[a-z]/ },
+                number: { element: document.getElementById('req-number'), regex: /[0-9]/ },
+                special: { element: document.getElementById('req-special'), regex: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/ }
+            };
+            
+            function validatePassword() {
+                const pwd = password.value;
+                let metCount = 0;
+                
+                // Check each requirement
+                Object.values(requirements).forEach(req => {
+                    if (req.regex.test(pwd)) {
+                        req.element.classList.add('met');
+                        req.element.classList.remove('unmet');
+                        metCount++;
+                    } else {
+                        req.element.classList.remove('met');
+                        req.element.classList.add('unmet');
+                    }
+                });
+                
+                // Update strength bar
+                strengthBar.className = 'strength-bar';
+                if (metCount <= 2) {
+                    strengthBar.classList.add('strength-weak');
+                } else if (metCount <= 4) {
+                    strengthBar.classList.add('strength-medium');
+                } else {
+                    strengthBar.classList.add('strength-strong');
+                }
+                
+                // Enable and unable submit button
+                const allMet = metCount === 5;
+                submitBtn.disabled = !allMet;
+                
+                return allMet;
+            }
+            
+            password.addEventListener('input', validatePassword);
+            
+            // Validate on form submit
+            form.addEventListener('submit', function(e) {
+                if (!validatePassword()) {
+                    e.preventDefault();
+                    alert('Please meet all password requirements');
+                }
+            });
+        });
+    </script>
 
 </body>
 </html>
