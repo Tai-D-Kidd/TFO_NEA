@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Your Maps</title>
-
     <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
 </head>
 <body>
@@ -28,11 +27,12 @@
 
         <div class="card">
             <h2>Create a New Map</h2>
-            <form method="POST">
+            <form method="POST" id="createMapForm">
                 <input type="text" name="map_name" placeholder="Map Name" required>
-                <input type="number" step="any" name="map_center_lat" placeholder="Center Latitude">
-                <input type="number" step="any" name="map_center_lon" placeholder="Center Longitude">
-                <button type="submit">Create Map</button>
+                <input type="hidden" name="map_center_lat" id="map_center_lat" value="{{ user.latitude }}">
+                <input type="hidden" name="map_center_lon" id="map_center_lon" value="{{ user.longitude }}">
+                <p id="location-status">Getting your location...</p>
+                <button type="submit" id="createBtn">Create Map</button>
             </form>
         </div>
 
@@ -49,6 +49,67 @@
         </div>
 
     </div>
+
+    <script>
+        // Get user's current location when page loads
+        const locationStatus = document.getElementById('location-status');
+        const latInput = document.getElementById('map_center_lat');
+        const lonInput = document.getElementById('map_center_lon');
+        const createBtn = document.getElementById('createBtn');
+
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    latInput.value = lat;
+                    lonInput.value = lon;
+                    
+                    locationStatus.textContent = `Map will be centered at your current location`;
+                    locationStatus.style.color = '#4CAF50';
+                    
+                    // Update user's location in database
+                    fetch('/update_location', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            latitude: lat,
+                            longitude: lon
+                        })
+                    });
+                },
+                error => {
+                    console.error("Error getting location:", error);
+                    locationStatus.textContent = `Using default location (enable location access for better experience)`;
+                    locationStatus.style.color = '#ff9800';
+                    
+                    // Use database location as backup
+                    const dbLat = {{ user.latitude }};
+                    const dbLon = {{ user.longitude }};
+                    
+                    if (dbLat !== 0 && dbLon !== 0) {
+                        latInput.value = dbLat;
+                        lonInput.value = dbLon;
+                    } else {
+                        // All roads lead to Rome ... or London 
+                        latInput.value = 51.5074;  // London coords
+                        lonInput.value = -0.1278;
+                    }
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            locationStatus.textContent = "Geolocation not supported";
+            locationStatus.style.color = '#f44336';
+        }
+    </script>
 
 </body>
 </html>
