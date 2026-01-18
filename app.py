@@ -97,6 +97,22 @@ def get_or_create_game(map_id):
         for user in users_in_map:
             player = Player(user.id, user.username, user.user_color)
             active_games[map_id].add_player(player)
+        # Load existing trails into player objects
+        trails = db.session.execute(
+            text("""
+                SELECT user_id, coordinates
+                FROM trails
+                WHERE map_id = :map_id
+            """),
+            {'map_id': map_id}
+        ).fetchall()
+        
+        for trail in trails:
+            player = active_games[map_id].get_player(trail.user_id)
+            if player:
+                # Load trail coordinates into player's trail
+                trail_coords = json.loads(trail.coordinates)
+                player.trail = [(lat, lon) for lat, lon in trail_coords]
         
         # Load existing territories
         territories = db.session.execute(
@@ -465,6 +481,19 @@ def join_map_room(data):
         color = name2color(username)
         player = Player(user_id, username, color)
         game_map.add_player(player)
+
+        trail_data = db.session.execute(
+            text("""
+                SELECT coordinates
+                FROM trails
+                WHERE map_id = :map_id AND user_id = :user_id
+            """),
+            {'map_id': map_id, 'user_id': user_id}
+        ).fetchone()
+        
+        if trail_data:
+            trail_coords = json.loads(trail_data.coordinates)
+            player.trail = [(lat, lon) for lat, lon in trail_coords]
 
 @socketio.on("update_location")
 def update_location_socket(data):
