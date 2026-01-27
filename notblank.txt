@@ -69,3 +69,28 @@ setInterval(simulateCircularMovement, 500);
 using ngrok of semi online
 cd ~/Downloads
 ./ngrok http 5000
+
+
+
+
+
+  db.session.execute(
+            text("""
+                 INSERT INTO territories (map_id, user_id, coordinates,area,color)
+                 VALUES (:map_id,:user_id,:coordinates,:area,:color)
+                 """),
+            {'map_id': map_id, 'user_id':user_id, 'coordinates':coordinates_json, 'area': territory.area, 'color':color}
+                 
+        )
+
+
+
+
+db_territory = Territory(
+            map_id=map_id,
+            user_id=user_id,
+            coordinates=coordinates_json,
+            area=territory.area,
+            color=color
+        )
+        db.session.add(db_territory)

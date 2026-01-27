@@ -12,7 +12,7 @@ import re
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase4.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase5.db'
 app.config['JWT_SECRET_KEY'] = 'dot.dot.'
 app.config['SECRET_KEY']= '.dot.dot'
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -33,6 +33,8 @@ class Users(db.Model):
     latitude = db.Column(db.Float, server_default='0.0', nullable=False)
     longitude = db.Column(db.Float, server_default='0.0', nullable=False)
     is_online = db.Column(db.Integer, server_default='0', nullable=False)  # 0 = offline, 1 = online
+    level = db.Column(db.Integer, server_default='1', nullable=False)  
+    xp = db.Column(db.Integer, server_default='0', nullable=False)  
     
 class Maps_Data(db.Model):
     __tablename__ = 'maps_data'
@@ -71,6 +73,15 @@ class Trail(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     coordinates = db.Column(db.Text, nullable=False)  
     color = db.Column(db.String(7), nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+
+class Friendship(db.Model):
+    __tablename__ = 'friendships'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    friend_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    status = db.Column(db.String(20), server_default='pending', nullable=False)  # pending, accepted
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
 with app.app_context():
@@ -141,6 +152,41 @@ def name2color(name):
     b = (hash_code * 789) % 256
     return f'#{r:02x}{g:02x}{b:02x}'
 
+#level calculation made a function so could change to exponential r curve for levels later so its harder to increase as you get to a higher level
+def calculate_level(xp):
+    return (xp // 100) + 1
+
+def add_xp(user_id, xp_amount):
+   
+    result = db.session.execute(
+        text("""
+             SELECT xp, level 
+             FROM users 
+             WHERE id = :user_id
+             """),
+        {'user_id': user_id}
+    ).fetchone()
+    
+    new_xp = result.xp + xp_amount
+    new_level = calculate_level(new_xp)
+    
+    db.session.execute(
+        text("""
+            UPDATE users SET xp = :xp, level = :level 
+            WHERE id = :user_id
+             """),
+        {'xp': new_xp, 'level': new_level, 'user_id': user_id}
+    )
+    db.session.commit()
+    
+    return new_level, new_xp
+
+# raw value of area calc is really small and would wnat different scaling
+def area_scale_factor(area, mode):
+    if mode == 'points':
+        return int(area* 10015 * (10**5)) #from test values this is circa 1 point per 10sqm
+    if mode == 'xp':
+        return int(area* 10015 *(10**4)) #1xp per 1sqm
 
 ################. ROUTES #####################
 @app.route('/')
@@ -164,7 +210,12 @@ def register():
             return redirect(url_for('register'))
         
         result = db.session.execute(
-            text(" SELECT * FROM users WHERE username = :username "), {'username': username}
+            text(""" 
+                SELECT * 
+                FROM users 
+                WHERE username = :username 
+                """), 
+                {'username': username}
         ).fetchone() #returns True if user in db
 
         if result:
@@ -175,7 +226,10 @@ def register():
         hashed_pw = bcrypt.generate_password_hash(password).decode('utf-8')
 
         db.session.execute(
-            text(" INSERT INTO users (username, password) VALUES (:username, :password) "),
+            text("""
+                 INSERT INTO users (username, password) 
+                 VALUES (:username, :password) 
+                 """),
             {'username': username, 'password': hashed_pw}
         )
         db.session.commit()
@@ -183,7 +237,7 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html')
 
-#-- login --
+#-- low jin --
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'GET':
@@ -193,7 +247,11 @@ def login():
         password = request.form['password']
 
         result = db.session.execute(
-            text(" SELECT * FROM users WHERE username = :username "), {'username': username}
+            text("""
+                SELECT * 
+                FROM users 
+                WHERE username = :username 
+                """), {'username': username}
         ).fetchone()
 
         if not result or not bcrypt.check_password_hash(result.password, password):
@@ -206,7 +264,7 @@ def login():
         flash('Login successful!')
         return redirect(url_for('dashboard'))
 
-    
+#-- changing your location  
 @app.route('/update_location', methods=['POST'])
 def update_location():
     if 'user_id' not in session:
@@ -216,14 +274,18 @@ def update_location():
     longitude = data.get('longitude')
 
     db.session.execute(
-        text(" UPDATE users SET latitude = :latitude, longitude = :longitude WHERE id = :user_id "),
+        text("""
+             UPDATE users 
+             SET latitude = :latitude, longitude = :longitude 
+             WHERE id = :user_id 
+             """),
         {'latitude': latitude, 'longitude': longitude, 'user_id': session['user_id']}
     )
     db.session.commit()
     return jsonify({'message': 'Location updated successfully'}), 200
 
 
-
+#-- the (-)board 
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'user_id' not in session:
@@ -231,7 +293,7 @@ def dashboard():
 
     user = db.session.execute(
         text("""
-            SELECT username, latitude, longitude 
+            SELECT username, latitude, longitude, level, xp 
             FROM users WHERE id = :id
             """),
         {'id': session['user_id']}
@@ -334,8 +396,132 @@ def dashboard():
         {'user_id': session['user_id']}
     ).fetchall()
 
-    return render_template('dashboard.html', user=user, current_maps=current_maps, available_maps=available_maps)
+    # Get friends list
+    friends = db.session.execute(
+        text("""
+            SELECT u.id, u.username, u.level, u.is_online
+            FROM users u
+            JOIN friendships f ON (u.id = f.friend_id OR u.id = f.user_id)
+            WHERE (f.user_id = :user_id OR f.friend_id = :user_id)
+            AND u.id != :user_id
+            AND f.status = 'accepted'
+        """),
+        {'user_id': session['user_id']}
+    ).fetchall()
 
+    # Get pending friend requests
+    pending_requests = db.session.execute(
+        text("""
+            SELECT u.id, u.username, u.level
+            FROM users u
+            JOIN friendships f ON u.id = f.user_id
+            WHERE f.friend_id = :user_id
+            AND f.status = 'pending'
+        """),
+        {'user_id': session['user_id']}
+    ).fetchall()
+
+    user_color = name2color(session['username'])
+
+    return render_template('dashboard.html', 
+                         user=user,
+                         user_color=user_color, 
+                         current_maps=current_maps, 
+                         available_maps=available_maps,
+                         friends=friends,
+                         pending_requests=pending_requests)
+
+### FRIENDS
+#-- be my friend
+@app.route('/send_friend_request', methods=['POST'])
+def send_friend_request():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    
+    data = request.get_json()
+    friend_username = data.get('username')
+    
+    # Find friend by username
+    friend = db.session.execute(
+        text("SELECT id FROM users WHERE username = :username"),
+        {'username': friend_username}
+    ).fetchone()
+    
+    if not friend:
+        return jsonify({'error': 'User not found'}), 404
+    
+    #edge case of adding yourself which would have been allowed before
+    if friend.id == session['user_id']:
+        return jsonify({'error': 'Cannot add yourself'}), 400
+    
+    # Check alr friends
+    existing = db.session.execute(
+        text("""
+            SELECT * FROM friendships 
+            WHERE (user_id = :user_id AND friend_id = :friend_id)
+            OR (user_id = :friend_id AND friend_id = :user_id)
+        """),
+        {'user_id': session['user_id'], 'friend_id': friend.id}
+    ).fetchone()
+    
+    if existing:
+        return jsonify({'error': 'Friend request already exists'}), 400
+    
+    # Create friend request
+    db.session.execute(
+        text("""
+            INSERT INTO friendships (user_id, friend_id, status)
+            VALUES (:user_id, :friend_id, 'pending')
+        """),
+        {'user_id': session['user_id'], 'friend_id': friend.id}
+    )
+    db.session.commit()
+    
+    return jsonify({'message': 'Friend request sent!'}), 200
+
+#-- I do
+@app.route('/accept_friend_request', methods=['POST'])
+def accept_friend_request():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    
+    data = request.get_json()
+    requester_id = data.get('requester_id')
+    
+    db.session.execute(
+        text("""
+            UPDATE friendships 
+            SET status = 'accepted'
+            WHERE user_id = :requester_id AND friend_id = :user_id
+        """),
+        {'requester_id': requester_id, 'user_id': session['user_id']}
+    )
+    db.session.commit()
+    
+    return jsonify({'message': 'Friend request accepted!'}), 200
+
+#-- I don't
+@app.route('/reject_friend_request', methods=['POST'])
+def reject_friend_request():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    
+    data = request.get_json()
+    requester_id = data.get('requester_id')
+    
+    db.session.execute(
+        text("""
+            DELETE FROM friendships 
+            WHERE user_id = :requester_id AND friend_id = :user_id
+        """),
+        {'requester_id': requester_id, 'user_id': session['user_id']}
+    )
+    db.session.commit()
+    
+    return jsonify({'message': 'Friend request rejected'}), 200
+
+
+#-- Le Plan --
 @app.route('/map_view')
 def map_view():
     if 'user_id' not in session:
@@ -346,14 +532,18 @@ def map_view():
 
     game_map = get_or_create_game(map_id)
 
-    # Ensure current user is added to the game
+    # Make sure current user is added to the game
     if session['user_id'] not in game_map.players:
         user_color = name2color(session['username'])
         player = Player(session['user_id'], session['username'], user_color)
         game_map.add_player(player)
 
     map_data = db.session.execute(
-        text(" SELECT * FROM maps_data WHERE id = :map_id "),
+        text("""
+              SELECT * 
+             FROM maps_data 
+             WHERE id = :map_id 
+             """),
         {'map_id': map_id}
     ).fetchone()
 
@@ -448,12 +638,16 @@ def map_view():
                             trails=trails_list,
                             leaderboard=leaderboard_list)
 
+#-- leaving
 @app.route('/logout')
 def logout():
     user_id = session.get('user_id')
     if user_id:
         db.session.execute(
-            text("UPDATE users SET is_online = 0 WHERE id = :user_id"),
+            text("""
+                 UPDATE users SET is_online = 0 
+                 WHERE id = :user_id
+                 """),
             {'user_id': user_id}
         )
         db.session.commit()
@@ -466,7 +660,7 @@ def logout():
 
 ##############. SOCKET.IO EVENTS #####################
 
-
+#entering map you are alr a part of
 @socketio.on("join_map")
 def join_map_room(data):
     map_id = data['map_id']
@@ -477,7 +671,11 @@ def join_map_room(data):
     if user_id:
         # Mark user as online
         db.session.execute(
-            text("UPDATE users SET is_online = 1 WHERE id = :user_id"),
+            text("""
+                 UPDATE users 
+                 SET is_online = 1 
+                 WHERE id = :user_id
+                 """),
             {'user_id': user_id}
         )
         db.session.commit()
@@ -517,7 +715,11 @@ def update_location_socket(data):
     map_id = data["map_id"]
 
     db.session.execute(
-        text("UPDATE users SET latitude=:lat, longitude=:lon WHERE id=:u"),
+        text("""
+             UPDATE users 
+             SET latitude=:lat, longitude=:lon 
+             WHERE id=:u
+             """),
         {'lat': lat, 'lon': lon, 'u': user_id}
     )
     db.session.commit()
@@ -532,7 +734,10 @@ def update_location_socket(data):
 
         # Delete broken trail from database
         db.session.execute(
-            text("DELETE FROM trails WHERE map_id = :map_id AND user_id = :user_id"),
+            text("""
+                 DELETE FROM trails 
+                 WHERE map_id = :map_id AND user_id = :user_id
+                 """),
             {'map_id': map_id, 'user_id': broken_by}
         )
         db.session.commit()
@@ -550,12 +755,17 @@ def update_location_socket(data):
 
         # Territory created - delete trail from database
         db.session.execute(
-            text("DELETE FROM trails WHERE map_id = :map_id AND user_id = :user_id"),
+            text("""
+                 DELETE FROM trails 
+                 WHERE map_id = :map_id AND user_id = :user_id
+                 """),
             {'map_id': map_id, 'user_id': user_id}
         )
 
         color = game_map.get_player(user_id).color
         coordinates_json = json.dumps(territory.polygon)
+        
+
         
         db_territory = Territory(
             map_id=map_id,
@@ -565,9 +775,8 @@ def update_location_socket(data):
             color=color
         )
         db.session.add(db_territory)
-        
         # Update score
-        points = int(territory.area * 10015 * (10**5))  # circa 1 pint per 10 sqm
+        points = area_scale_factor(territory.area, 'points')  # circa 1 pint per 10 sqm
         db.session.execute(
             text("""
                 UPDATE user_map
@@ -576,6 +785,11 @@ def update_location_socket(data):
             """),
             {"points": points, "user_id": user_id, "map_id": map_id}
         )
+        
+        # Add XP and update level
+        xp_gained = max(1, area_scale_factor(territory.area, 'xp'))  # Minimum 1XP, circa 1 xp per sqm
+        new_level, new_xp = add_xp(user_id, xp_gained)
+        
         db.session.commit()
         
         new_score = db.session.execute(
@@ -600,12 +814,24 @@ def update_location_socket(data):
             "new_score": new_score
         }, room=f"map_{map_id}")
         
+        # Broadcast level up if changed
+        emit("level_updated", {
+            "user_id": user_id,
+            "username": username,
+            "level": new_level,
+            "xp": new_xp,
+            "xp_gained": xp_gained
+        }, room=f"map_{map_id}")
+        
         # Send trail cleared event
         emit("clear_trail", {"user_id": user_id}, room=f"map_{map_id}")
     else:
          # Update/create trail in database
         existing_trail = db.session.execute(
-            text("SELECT coordinates FROM trails WHERE map_id = :map_id AND user_id = :user_id"),
+            text("""
+                 SELECT coordinates 
+                 FROM trails WHERE map_id = :map_id AND user_id = :user_id
+                 """),
             {'map_id': map_id, 'user_id': user_id}
         ).fetchone()
         
@@ -615,7 +841,11 @@ def update_location_socket(data):
             trail_coords.append([lat, lon])
             
             db.session.execute(
-                text("UPDATE trails SET coordinates = :coords WHERE map_id = :map_id AND user_id = :user_id"),
+                text("""
+                     UPDATE trails 
+                     SET coordinates = :coords 
+                     WHERE map_id = :map_id AND user_id = :user_id
+                     """),
                 {'coords': json.dumps(trail_coords), 'map_id': map_id, 'user_id': user_id}
             )
         else:
@@ -644,7 +874,11 @@ def handle_disconnect():
     
     if user_id:
         db.session.execute(
-            text("UPDATE users SET is_online = 0 WHERE id = :user_id"),
+            text("""
+                 UPDATE users 
+                 SET is_online = 0 
+                 WHERE id = :user_id
+                 """),
             {'user_id': user_id}
         )
         db.session.commit()
@@ -659,4 +893,3 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
-
