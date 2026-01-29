@@ -84,8 +84,21 @@
                         {% for m in current_maps %}
                             <li class="map-item">
                                 <div class="map-info">
-                                    <span class="map-name">{{ m.map_name }}</span>
+                                    <span class="map-name">
+                                        {{ m.map_name }}
+                                        {% if m.map_type == 'private' %}
+                                            <span class="map-badge private">Private</span>
+                                        {% else %}
+                                            <span class="map-badge public">Public</span>
+                                        {% endif %}
+                                    </span>
                                     <span class="map-players">{{ m.num_users }} players</span>
+                                    <span class="map-code">Code: {{ m.map_code }}</span>
+                                    {% if m.game_status == 'completed' %}
+                                        <span class="game-status completed">Winner: {{ m.winner_name }}</span>
+                                    {% elif m.game_status == 'active' %}
+                                        <span class="game-status active">Active</span>
+                                    {% endif %}
                                 </div>
                                 <a href="{{ url_for('map_view', map_id=m.id) }}" class="open-btn">Open</a>
                             </li>
@@ -100,6 +113,48 @@
                     <h2>Create a New Map</h2>
                     <form method="POST" id="createMapForm">
                         <input type="text" name="map_name" placeholder="Map Name" required>
+                        
+                        <!-- Map Type Selection -->
+                        <div class="form-section">
+                            <label>Map Type:</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="map_type" value="public" checked>
+                                    <span>Public (anyone can join)</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="map_type" value="private">
+                                    <span>Private (code required)</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Win Condition Selection -->
+                        <div class="form-section">
+                            <label>Win Condition:</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="win_condition_type" value="points" checked onclick="showPointsInput()">
+                                    <span>First to X points</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="win_condition_type" value="time" onclick="showTimeInput()">
+                                    <span>Most points after X minutes</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Target Value Input -->
+                        <div id="pointsInput" class="condition-input">
+                            <input type="number" name="win_condition_value" value="10000" min="10000" step="10000" placeholder="Target points">
+                            <small>Points needed to win</small>
+                        </div>
+                        
+                        <div id="timeInput" class="condition-input" style="display: none;">
+                            <input type="number" name="win_condition_value" value="30" min="5" step="30" placeholder="Game duration">
+                            <small>Minutes until game ends</small>
+                        </div>
+                        
                         <input type="hidden" name="map_center_lat" id="map_center_lat" value="{{ user.latitude }}">
                         <input type="hidden" name="map_center_lon" id="map_center_lon" value="{{ user.longitude }}">
                         <p id="location-status">Getting your location...</p>
@@ -107,9 +162,18 @@
                     </form>
                 </div>
 
-                <!-- Join Existing Maps Card -->
+                <!-- Join with Code Card -->
                 <div class="card">
-                    <h2>Join Existing Maps</h2>
+                    <h2>Join Map with Code</h2>
+                    <form method="POST">
+                        <input type="text" name="join_code" placeholder="Enter 6-character code" maxlength="6" style="text-transform: uppercase;" required>
+                        <button type="submit">Join with Code</button>
+                    </form>
+                </div>
+
+                <!-- Join Public Maps Card -->
+                <div class="card">
+                    <h2>Join Public Maps</h2>
                     {% if available_maps %}
                     <form method="POST">
                         <select name="join_map_id">
@@ -120,7 +184,7 @@
                         <button type="submit">Join Map</button>
                     </form>
                     {% else %}
-                    <p class="no-maps">No available maps to join. Create one above!</p>
+                    <p class="no-maps">No available public maps. Create one above!</p>
                     {% endif %}
                 </div>
             </div>
@@ -129,6 +193,20 @@
     </div>
 
     <script>
+        function showPointsInput() {
+            document.getElementById('pointsInput').style.display = 'block';
+            document.getElementById('timeInput').style.display = 'none';
+            document.querySelector('#pointsInput input').required = true;
+            document.querySelector('#timeInput input').required = false;
+        }
+        
+        function showTimeInput() {
+            document.getElementById('pointsInput').style.display = 'none';
+            document.getElementById('timeInput').style.display = 'block';
+            document.querySelector('#pointsInput input').required = false;
+            document.querySelector('#timeInput input').required = true;
+        }
+        
         // Friend request functions
         function sendFriendRequest() {
             const username = document.getElementById('friendUsername').value;

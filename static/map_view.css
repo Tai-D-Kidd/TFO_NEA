@@ -38,6 +38,70 @@ body {
     text-align: center;
 }
 
+/* Game Progress Section */
+.game-progress {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: #e0e0e0;
+    border-radius: 15px;
+    box-shadow: inset 5px 5px 10px #bebebe,
+                inset -5px -5px 10px #ffffff;
+}
+
+.game-completed {
+    text-align: center;
+    padding: 1rem;
+}
+
+.trophy {
+    font-size: 3em;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.winner-text {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #333;
+}
+
+.progress-info {
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+.progress-label {
+    font-weight: 600;
+    color: #555;
+    font-size: 0.95em;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 25px;
+    background: #e0e0e0;
+    border-radius: 15px;
+    box-shadow: inset 4px 4px 8px #bebebe,
+                inset -4px -4px 8px #ffffff;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+    border-radius: 15px;
+    transition: width 0.5s ease, background 0.3s ease;
+    box-shadow: 3px 3px 6px #bebebe;
+}
+
+.progress-percentage {
+    text-align: center;
+    font-weight: 700;
+    color: #555;
+    font-size: 0.9em;
+}
+
 /* Map container */
 #map {
     height: 500px;
@@ -48,13 +112,19 @@ body {
 }
 
 /* Leaderboard */
+.leaderboard-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
 .leaderboard-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: #e0e0e0;
     border-radius: 15px;
-    padding: 0.5rem 1rem;
+    padding: 0.75rem 1rem;
     margin-bottom: 0.75rem;
     box-shadow:  5px 5px 10px #bebebe,
                  -5px -5px 10px #ffffff;
@@ -65,22 +135,32 @@ body {
     transform: scale(1.02);
 }
 
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .color-dot {
     display: inline-block;
     width: 15px;
     height: 15px;
     border-radius: 50%;
-    margin-right: 0.5rem;
     border: 1px solid #999;
-    vertical-align: middle;
 }
 
-/* Text inside leaderboard */
-.leaderboard-row span {
+.player-name {
     font-weight: 600;
     color: #333;
 }
 
+.player-score {
+    font-weight: 700;
+    color: #555;
+    font-size: 1.1em;
+}
+
+/* Trail animations */
 .friend-trail {
     opacity: 0.6;
     stroke-dasharray: 5, 5;
@@ -95,5 +175,109 @@ body {
 @keyframes dash {
     to {
         stroke-dashoffset: -1000;
+    }
+}
+
+/* Test Mode Indicator */
+#arrow-mode-indicator {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 15px 30px;
+    border-radius: 15px;
+    color: white;
+    font-weight: 700;
+    z-index: 10000;
+    box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.3);
+    text-align: center;
+}
+
+/* Game End Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background: #e0e0e0;
+    padding: 3rem;
+    border-radius: 25px;
+    box-shadow: 15px 15px 30px #bebebe,
+                -15px -15px 30px #ffffff;
+    text-align: center;
+    max-width: 500px;
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-content h2 {
+    color: #333;
+    margin-bottom: 1.5rem;
+    font-size: 2.5em;
+}
+
+.modal-content p {
+    color: #555;
+    font-size: 1.3em;
+    margin-bottom: 2rem;
+    font-weight: 600;
+}
+
+.modal-content button {
+    padding: 15px 40px;
+    border: none;
+    border-radius: 15px;
+    background: #e0e0e0;
+    font-size: 1.1em;
+    cursor: pointer;
+    font-weight: 700;
+    color: #333;
+    box-shadow: 6px 6px 12px #bebebe,
+                -6px -6px 12px #ffffff;
+    transition: 0.15s ease-in-out;
+}
+
+.modal-content button:hover {
+    box-shadow: 8px 8px 16px #bebebe,
+                -8px -8px 16px #ffffff;
+}
+
+.modal-content button:active {
+    box-shadow: inset 6px 6px 12px #bebebe,
+                inset -6px -6px 12px #ffffff;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+        padding: 1rem;
+    }
+    
+    .panel {
+        max-width: 100%;
+    }
+    
+    #map {
+        height: 400px;
     }
 }

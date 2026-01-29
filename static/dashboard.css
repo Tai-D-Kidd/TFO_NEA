@@ -270,11 +270,59 @@ h3 {
     font-weight: 600;
     color: #333;
     font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.map-badge {
+    font-size: 0.75em;
+    padding: 3px 8px;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.map-badge.public {
+    background: #4CAF50;
+    color: white;
+}
+
+.map-badge.private {
+    background: #ff9800;
+    color: white;
+}
+
+.map-code {
+    font-size: 0.85em;
+    color: #666;
+    font-family: monospace;
+    background: #e0e5ec;
+    padding: 4px 8px;
+    border-radius: 6px;
+    box-shadow: 2px 2px 4px #b8bec7,
+                -2px -2px 4px #ffffff;
 }
 
 .map-players {
     font-size: 0.85em;
     color: #666;
+}
+
+.game-status {
+    font-size: 0.85em;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.game-status.active {
+    background: #4CAF50;
+    color: white;
+}
+
+.game-status.completed {
+    background: #FFD700;
+    color: #333;
 }
 
 .open-btn {
@@ -300,6 +348,69 @@ form {
     display: flex;
     flex-direction: column;
     gap: 15px;
+}
+
+.form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.form-section label {
+    font-weight: 600;
+    color: #555;
+    font-size: 0.95em;
+}
+
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    background: #e0e5ec;
+    box-shadow: inset 3px 3px 6px #b8bec7,
+                inset -3px -3px 6px #ffffff;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.radio-label:hover {
+    box-shadow: inset 4px 4px 8px #b8bec7,
+                inset -4px -4px 8px #ffffff;
+}
+
+.radio-label input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+    box-shadow: none;
+    padding: 0;
+    width: 18px;
+    height: 18px;
+}
+
+.radio-label span {
+    flex: 1;
+    color: #555;
+    font-weight: 500;
+}
+
+.condition-input {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.condition-input small {
+    color: #888;
+    font-size: 0.85em;
+    margin-left: 5px;
 }
 
 input, select {

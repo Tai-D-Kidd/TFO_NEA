@@ -4,15 +4,17 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room
 from sqlalchemy.sql import text
-from datetime import timedelta
+from datetime import timedelta, datetime
 import math
 import json
 from game_models import Player, GameMap, GameController, GameTerritory
 import re
+import random
+import string
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=7)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase5.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thebase6.db'
 app.config['JWT_SECRET_KEY'] = 'dot.dot.'
 app.config['SECRET_KEY']= '.dot.dot'
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -45,6 +47,14 @@ class Maps_Data(db.Model):
     map_center_lon = db.Column(db.Float, nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     num_users = db.Column(db.Integer, default=0)
+    map_type = db.Column(db.String(10), server_default='public', nullable=False)  # 'public' or 'private'
+    map_code = db.Column(db.String(6), unique=True, nullable=True)  # 6-character code
+    win_condition_type = db.Column(db.String(10), server_default='points', nullable=False)  # 'points' or 'time'
+    win_condition_value = db.Column(db.Integer, server_default='1000', nullable=False)  # target points or minutes
+    game_status = db.Column(db.String(20), server_default='active', nullable=False)  # 'active', 'completed', 'paused'
+    game_start_time = db.Column(db.DateTime, nullable=True)
+    winner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    
     
 # link between users and maps
 class User_Map(db.Model):
@@ -89,6 +99,118 @@ with app.app_context():
 
 ################. HELPERS #####################
 
+
+def generate_map_code():
+    while True:
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        # Check if code already exists
+        existing = db.session.execute(
+            text("SELECT id FROM maps_data WHERE map_code = :code"),
+            {'code': code}
+        ).fetchone()
+        if not existing:
+            return code
+
+def check_win_condition(map_id):
+    map_data = db.session.execute(
+        text("""
+            SELECT win_condition_type, win_condition_value, game_status, game_start_time
+            FROM maps_data
+            WHERE id = :map_id
+        """),
+        {'map_id': map_id}
+    ).fetchone()
+    
+    if not map_data or map_data.game_status != 'active':
+        return None
+    
+    if map_data.win_condition_type == 'points':
+        # Check if anyone reached the point threshold
+        winner = db.session.execute(
+            text("""
+                SELECT user_id, user_score
+                FROM user_map
+                WHERE map_id = :map_id AND user_score >= :target
+                ORDER BY user_score DESC
+                LIMIT 1
+            """),
+            {'map_id': map_id, 'target': map_data.win_condition_value}
+        ).fetchone()
+        
+        if winner:
+            return {'user_id': winner.user_id, 'score': winner.user_score, 'type': 'points'}
+    
+    elif map_data.win_condition_type == 'time':
+        # Check if time has elapsed
+        if map_data.game_start_time:
+            elapsed = datetime.now() - map_data.game_start_time
+            elapsed_minutes = elapsed.total_seconds() / 60
+            
+            if elapsed_minutes >= map_data.win_condition_value:
+                # Find player with highest score
+                winner = db.session.execute(
+                    text("""
+                        SELECT user_id, user_score
+                        FROM user_map
+                        WHERE map_id = :map_id
+                        ORDER BY user_score DESC
+                        LIMIT 1
+                    """),
+                    {'map_id': map_id}
+                ).fetchone()
+                
+                if winner:
+                    return {'user_id': winner.user_id, 'score': winner.user_score, 'type': 'time'}
+    
+    return None
+
+def end_game(map_id, winner_id):
+    db.session.execute(
+        text("""
+            UPDATE maps_data
+            SET game_status = 'completed', winner_id = :winner_id
+            WHERE id = :map_id
+        """),
+        {'map_id': map_id, 'winner_id': winner_id}
+    )
+    db.session.commit()
+
+def get_game_progress(map_id):
+    map_data = db.session.execute(
+        text("""
+            SELECT win_condition_type, win_condition_value, game_start_time
+            FROM maps_data
+            WHERE id = :map_id
+        """),
+        {'map_id': map_id}
+    ).fetchone()
+    
+    if not map_data:
+        return 0
+    
+    if map_data.win_condition_type == 'points':
+        # Get highest score
+        highest = db.session.execute(
+            text("""
+                SELECT MAX(user_score) as max_score
+                FROM user_map
+                WHERE map_id = :map_id
+            """),
+            {'map_id': map_id}
+        ).fetchone()
+        
+        if highest and highest.max_score:
+            return min(100, (highest.max_score / map_data.win_condition_value) * 100)
+        return 0
+    
+    elif map_data.win_condition_type == 'time':
+        if map_data.game_start_time:
+            elapsed = datetime.now() - map_data.game_start_time
+            elapsed_minutes = elapsed.total_seconds() / 60
+            return min(100, (elapsed_minutes / map_data.win_condition_value) * 100)
+        return 0
+    
+    return 0
 
 def get_or_create_game(map_id):
     
@@ -304,12 +426,22 @@ def dashboard():
             map_name = request.form['map_name']
             map_center_lat = float(request.form.get('map_center_lat', 0))
             map_center_lon = float(request.form.get('map_center_lon', 0))
+            map_type = request.form.get('map_type', 'public')
+            win_condition_type = request.form.get('win_condition_type', 'points')
+            win_condition_value = int(request.form.get('win_condition_value', 10000))
+            
+            # Generate unique code
+            map_code = generate_map_code()
             
             # into db
             db.session.execute(
                 text("""
-                    INSERT INTO maps_data (map_name, desc, map_center_lat, map_center_lon, owner_id, num_users) 
-                    VALUES (:map_name, :desc, :map_center_lat, :map_center_lon, :owner_id, :num_users) 
+                    INSERT INTO maps_data (map_name, desc, map_center_lat, map_center_lon, owner_id, num_users,
+                                          map_type, map_code, win_condition_type, win_condition_value, 
+                                          game_status, game_start_time) 
+                    VALUES (:map_name, :desc, :map_center_lat, :map_center_lon, :owner_id, :num_users,
+                           :map_type, :map_code, :win_condition_type, :win_condition_value,
+                           :game_status, :game_start_time) 
                     """),
                 {
                     'map_name': map_name,
@@ -317,8 +449,13 @@ def dashboard():
                     'map_center_lat': map_center_lat,
                     'map_center_lon': map_center_lon,
                     'owner_id': session['user_id'],
-                    'num_users': 1
-
+                    'num_users': 1,
+                    'map_type': map_type,
+                    'map_code': map_code,
+                    'win_condition_type': win_condition_type,
+                    'win_condition_value': win_condition_value,
+                    'game_status': 'active',
+                    'game_start_time': datetime.now()
                 }
             )
             db.session.commit()
@@ -327,71 +464,132 @@ def dashboard():
             db.session.execute(
                 text("""
                     INSERT INTO user_map (user_id, map_id, user_color) 
-                    VALUES (:user_id, (SELECT id FROM maps_data WHERE map_name = :map_name AND owner_id = :user_id), :user_color) 
+                    VALUES (:user_id, (SELECT id FROM maps_data WHERE map_code = :map_code), :user_color) 
                     """),
-                {'user_id': session['user_id'],'map_name': map_name, 'user_color': name2color(session['username'])}
+                {'user_id': session['user_id'], 'map_code': map_code, 'user_color': name2color(session['username'])}
             )
             db.session.commit()
-            flash(f'Map "{map_name}" created and joined!')
+            flash(f'Map "{map_name}" created! Code: {map_code}')
             return redirect(url_for('dashboard'))
 
-        # Joining an existing map
-    if 'join_map_id' in request.form:
-        map_to_join = Maps_Data.query.get(int(request.form['join_map_id']))
+        # Joining an existing map by ID (public maps)
+        if 'join_map_id' in request.form:
+            map_to_join = Maps_Data.query.get(int(request.form['join_map_id']))
 
-        # check if already in map
-        userin = db.session.execute(
-            text("""
-                SELECT * 
-                FROM user_map 
-                WHERE user_id = :user_id AND map_id = :map_id
-                """),
-            {'user_id': session['user_id'], 'map_id': map_to_join.id}
-        ).fetchone()
-
-        if map_to_join and not userin:
-
-            # add user to map
-
-            color = name2color(session['username'])
-            db.session.execute(
+            # check if already in map
+            userin = db.session.execute(
                 text("""
-                    INSERT INTO user_map (user_id, map_id, user_color) 
-                    VALUES (:user_id, :map_id, :user_color)
+                    SELECT * 
+                    FROM user_map 
+                    WHERE user_id = :user_id AND map_id = :map_id
                     """),
-                {'user_id': session['user_id'], 'map_id': map_to_join.id, 'user_color': color}
-            )
-            
+                {'user_id': session['user_id'], 'map_id': map_to_join.id}
+            ).fetchone()
 
-            
-            db.session.execute(
-                text("""
-                    UPDATE maps_data SET num_users = num_users + 1 
-                    WHERE id = :map_id
-                    """),
-                {'map_id': map_to_join.id}
-            )
+            if map_to_join and not userin:
 
-            db.session.commit()
-            flash(f'Joined map \"{map_to_join.map_name}\"!')
+                # add user to map
+
+                color = name2color(session['username'])
+                db.session.execute(
+                    text("""
+                        INSERT INTO user_map (user_id, map_id, user_color) 
+                        VALUES (:user_id, :map_id, :user_color)
+                        """),
+                    {'user_id': session['user_id'], 'map_id': map_to_join.id, 'user_color': color}
+                )
+                
+
+                
+                db.session.execute(
+                    text("""
+                        UPDATE maps_data SET num_users = num_users + 1 
+                        WHERE id = :map_id
+                        """),
+                    {'map_id': map_to_join.id}
+                )
+
+                db.session.commit()
+                flash(f'Joined map "{map_to_join.map_name}"!')
         
-        return redirect(url_for('dashboard'))
+            return redirect(url_for('dashboard'))
+        
+        # Joining via code (for private maps)
+        if 'join_code' in request.form:
+            code = request.form['join_code'].upper().strip()
+            
+            map_to_join = db.session.execute(
+                text("""
+                    SELECT id, map_name, game_status
+                    FROM maps_data
+                    WHERE map_code = :code
+                """),
+                {'code': code}
+            ).fetchone()
+            
+            if not map_to_join:
+                flash('Invalid map code!')
+                return redirect(url_for('dashboard'))
+            
+            if map_to_join.game_status == 'completed':
+                flash('This game has already ended!')
+                return redirect(url_for('dashboard'))
+            
+            # Check if already in map
+            userin = db.session.execute(
+                text("""
+                    SELECT * 
+                    FROM user_map 
+                    WHERE user_id = :user_id AND map_id = :map_id
+                    """),
+                {'user_id': session['user_id'], 'map_id': map_to_join.id}
+            ).fetchone()
+            
+            if not userin:
+                color = name2color(session['username'])
+                db.session.execute(
+                    text("""
+                        INSERT INTO user_map (user_id, map_id, user_color) 
+                        VALUES (:user_id, :map_id, :user_color)
+                        """),
+                    {'user_id': session['user_id'], 'map_id': map_to_join.id, 'user_color': color}
+                )
+                
+                db.session.execute(
+                    text("""
+                        UPDATE maps_data SET num_users = num_users + 1 
+                        WHERE id = :map_id
+                        """),
+                    {'map_id': map_to_join.id}
+                )
+                
+                db.session.commit()
+                flash(f'Joined map "{map_to_join.map_name}"!')
+            else:
+                flash('You are already in this map!')
+            
+            return redirect(url_for('dashboard'))
 
 
     # Show maps user is currently in
     current_maps = db.session.execute(
         text("""
-            SELECT maps_data.* FROM maps_data 
-            JOIN user_map ON maps_data.id = user_map.map_id WHERE user_map.user_id = :user_id 
+            SELECT maps_data.*, 
+                   (SELECT username FROM users WHERE id = maps_data.winner_id) as winner_name
+            FROM maps_data 
+            JOIN user_map ON maps_data.id = user_map.map_id 
+            WHERE user_map.user_id = :user_id 
              """),
         {'user_id': session['user_id']}
     ).fetchall()
 
-    # Show all maps they are NOT in (to join)
+    # Show only PUBLIC maps they are NOT in (to join)
     available_maps = db.session.execute(
         text("""
             SELECT * FROM maps_data 
-            WHERE id NOT IN (SELECT map_id FROM user_map WHERE user_id = :user_id) 
+            WHERE id NOT IN (SELECT map_id FROM user_map WHERE user_id = :user_id)
+            AND map_type = 'public'
+            AND game_status = 'active'
             """),
         {'user_id': session['user_id']}
     ).fetchall()
@@ -540,7 +738,8 @@ def map_view():
 
     map_data = db.session.execute(
         text("""
-              SELECT * 
+              SELECT *, 
+                     (SELECT username FROM users WHERE id = maps_data.winner_id) as winner_name
              FROM maps_data 
              WHERE id = :map_id 
              """),
@@ -629,6 +828,9 @@ def map_view():
         {"map_id": map_id}
     ).mappings().all()
     leaderboard_list = [dict(entry) for entry in leaderboard]
+    
+    # Calculate game progress
+    game_progress = get_game_progress(map_id)
 
     return render_template('map_view.html',
                             map_data=map_data, 
@@ -636,7 +838,8 @@ def map_view():
                             friends=friends_list, 
                             territories=territories_list,
                             trails=trails_list,
-                            leaderboard=leaderboard_list)
+                            leaderboard=leaderboard_list,
+                            game_progress=game_progress)
 
 #-- leaving
 @app.route('/logout')
@@ -713,6 +916,16 @@ def update_location_socket(data):
     lat = data["latitude"]
     lon = data["longitude"]
     map_id = data["map_id"]
+
+    # Check if game is still active
+    game_status = db.session.execute(
+        text("SELECT game_status FROM maps_data WHERE id = :map_id"),
+        {'map_id': map_id}
+    ).scalar()
+    
+    if game_status != 'active':
+        emit("game_ended", {"message": "This game has ended"})
+        return
 
     db.session.execute(
         text("""
@@ -825,6 +1038,23 @@ def update_location_socket(data):
         
         # Send trail cleared event
         emit("clear_trail", {"user_id": user_id}, room=f"map_{map_id}")
+        
+        # Check win condition after score update
+        winner_info = check_win_condition(map_id)
+        if winner_info:
+            end_game(map_id, winner_info['user_id'])
+            
+            winner_username = db.session.execute(
+                text("SELECT username FROM users WHERE id = :user_id"),
+                {'user_id': winner_info['user_id']}
+            ).scalar()
+            
+            emit("game_won", {
+                "winner_id": winner_info['user_id'],
+                "winner_username": winner_username,
+                "score": winner_info['score'],
+                "win_type": winner_info['type']
+            }, room=f"map_{map_id}")
     else:
          # Update/create trail in database
         existing_trail = db.session.execute(
@@ -860,6 +1090,11 @@ def update_location_socket(data):
             db.session.add(db_trail)
         
         db.session.commit()
+    
+    # Update game progress
+    progress = get_game_progress(map_id)
+    emit("progress_updated", {"progress": progress}, room=f"map_{map_id}")
+    
     # Broadcast position update
     emit("player_moved", {
         "user_id": user_id,

@@ -94,3 +94,11 @@ db_territory = Territory(
             color=color
         )
         db.session.add(db_territory)
+
+
+A faire
+new map types - public/private et timed/untimed
+new way to join private map -- with code 
+logout button
+Potentially alliances
+

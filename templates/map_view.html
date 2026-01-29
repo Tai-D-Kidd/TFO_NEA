@@ -9,21 +9,61 @@
 </head>
 
 <body>
+  <!-- Test Mode Indicator -->
+  <div id="arrow-mode-indicator" style="display: none;"></div>
+  
+  <!-- Game Ended Modal -->
+  <div id="gameEndedModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <h2>Game Over!</h2>
+      <p id="winnerText"></p>
+      <button onclick="location.href='/dashboard'">Back to Dashboard</button>
+    </div>
+  </div>
+
   <div class="container">
     <!-- MAP -->
     <div class="panel">
         <h2>{{ map_data.map_name }}</h2>
+        
+        <!-- Game Progress Section -->
+        <div class="game-progress">
+          {% if map_data.game_status == 'completed' %}
+            <div class="game-completed">
+              <span class="trophy">🏆</span>
+              <span class="winner-text">Winner: {{ map_data.winner_name }}</span>
+            </div>
+          {% else %}
+            <div class="progress-info">
+              <span class="progress-label">
+                {% if map_data.win_condition_type == 'points' %}
+                  First to {{ map_data.win_condition_value }} points
+                {% else %}
+                  {{ map_data.win_condition_value }} minute game
+                {% endif %}
+              </span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar" id="progressBar" style="width: {{ game_progress }}%"></div>
+            </div>
+            <div class="progress-percentage" id="progressText">{{ game_progress|round(1) }}%</div>
+          {% endif %}
+        </div>
+        
         <div id="map"></div>
     </div>
 
     <!-- LEADERBOARD -->
     <div class="panel">
         <h2>Leaderboard</h2>
-        <ul id="leaderboard">
+        <ul id="leaderboard" class="leaderboard-list">
             {% for row in leaderboard %}
-                <li>
-                    <span class="color-dot" style="background: {{ row.user_color }}"></span>
-                    {{ row.username }} - {{ row.user_score|round(0) }}
+                <li class="leaderboard-row">
+                    <div class="player-info">
+                      <span class="color-dot" style="background: {{ row.user_color }}"></span>
+                      <span class="player-name">{{ row.username }}</span>
+                    </div>
+                    <span class="player-score">{{ row.user_score|round(0) }}</span>
                 </li>
             {% endfor %}
         </ul>
@@ -51,6 +91,9 @@
     const ucolor = "{{ user.user_color }}";
     let trailLine = null;
     let friendTrails = {};
+    const gameStatus = "{{ map_data.game_status }}";
+    const winConditionType = "{{ map_data.win_condition_type }}";
+    const winConditionValue = {{ map_data.win_condition_value }};
 
     {% for row in leaderboard %}
         scores["{{ row.username }}"] = {{ row.user_score }};
@@ -174,9 +217,34 @@ function updateLeaderboard() {
         .sort((a, b) => b[1] - a[1])
         .forEach(([name, score]) => {
             const li = document.createElement("li");
-            li.innerHTML = `<span>${name}</span><span>${score.toFixed(0)}</span>`;
+            li.className = "leaderboard-row";
+            li.innerHTML = `
+                <div class="player-info">
+                    <span class="player-name">${name}</span>
+                </div>
+                <span class="player-score">${score.toFixed(0)}</span>
+            `;
             list.appendChild(li);
         });
+}
+
+function updateProgress(progress) {
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    
+    if (progressBar && progressText) {
+        progressBar.style.width = progress + '%';
+        progressText.textContent = progress.toFixed(1) + '%';
+        
+        // Change color as it gets closer to 100%
+        if (progress >= 90) {
+            progressBar.style.background = 'linear-gradient(90deg, #ff6b6b 0%, #ee5a6f 100%)';
+        } else if (progress >= 70) {
+            progressBar.style.background = 'linear-gradient(90deg, #f39c12 0%, #e67e22 100%)';
+        } else if (progress >= 50) {
+            progressBar.style.background = 'linear-gradient(90deg, #f1c40f 0%, #f39c12 100%)';
+        }
+    }
 }
 
 // SEND ME THE LOCATION 
@@ -184,6 +252,10 @@ function updateLeaderboard() {
 
 // fake move for testing 
 function handlePosition(lat, lon) {
+    if (gameStatus === 'completed') {
+        console.log("Game has ended, no more movements allowed");
+        return;
+    }
     
     currentLat = lat;
     currentLon = lon;
@@ -274,6 +346,9 @@ if ("geolocation" in navigator) {
     watchId = navigator.geolocation.watchPosition(
         pos => {
             if (arrowKeyMode) return;
+            
+            realGPSLat = pos.coords.latitude;
+            realGPSLon = pos.coords.longitude;
 
             handlePosition(
                 pos.coords.latitude,
@@ -368,6 +443,32 @@ if ("geolocation" in navigator) {
     updateLeaderboard();
 });
 
+socket.on("progress_updated", data => {
+    updateProgress(data.progress);
+});
+
+socket.on("game_won", data => {
+    const modal = document.getElementById('gameEndedModal');
+    const winnerText = document.getElementById('winnerText');
+    
+    if (data.win_type === 'points') {
+        winnerText.textContent = `${data.winner_username} won by reaching ${data.score} points!`;
+    } else {
+        winnerText.textContent = `${data.winner_username} won with ${data.score} points!`;
+    }
+    
+    modal.style.display = 'flex';
+    
+    // Stop GPS tracking
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+    }
+});
+
+socket.on("game_ended", data => {
+    alert(data.message);
+    location.href = '/dashboard';
+});
 
 
   </script>
