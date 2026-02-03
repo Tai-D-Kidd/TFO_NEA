@@ -437,7 +437,10 @@ def dashboard():
             map_center_lon = float(request.form.get('map_center_lon', 0))
             map_type = request.form.get('map_type', 'public')
             win_condition_type = request.form.get('win_condition_type', 'points')
-            win_condition_value = int(request.form.get('win_condition_value', 10000))
+            if win_condition_type == 'points':
+                win_condition_value = int(request.form.get('win_condition_value_points',10000))
+            elif win_condition_type == 'time':
+                win_condition_value = int(request.form.get('win_condition_value_time',30))
             
             # Generate unique code
             map_code = generate_map_code()
