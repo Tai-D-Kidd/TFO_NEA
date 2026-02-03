@@ -143,7 +143,13 @@ def check_win_condition(map_id):
     elif map_data.win_condition_type == 'time':
         # Check if time has elapsed
         if map_data.game_start_time:
-            elapsed = datetime.now() - map_data.game_start_time
+            for i in range(5):
+                print(".")
+            print(type(map_data.game_start_time))
+            elapsed = datetime.now() - datetime.strptime(
+    map_data.game_start_time,
+    "%Y-%m-%d %H:%M:%S.%f"
+)
             elapsed_minutes = elapsed.total_seconds() / 60
             
             if elapsed_minutes >= map_data.win_condition_value:
@@ -205,7 +211,10 @@ def get_game_progress(map_id):
     
     elif map_data.win_condition_type == 'time':
         if map_data.game_start_time:
-            elapsed = datetime.now() - map_data.game_start_time
+            elapsed = datetime.now() - datetime.strptime(
+    map_data.game_start_time,
+    "%Y-%m-%d %H:%M:%S.%f"
+)
             elapsed_minutes = elapsed.total_seconds() / 60
             return min(100, (elapsed_minutes / map_data.win_condition_value) * 100)
         return 0

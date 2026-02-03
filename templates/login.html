@@ -20,15 +20,7 @@
 
         <p>Don’t have an account? <a href="/register">Register</a></p>
 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <ul>
-                    {% for msg in messages[-1:] %}
-                        <li>{{ msg }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-        {% endwith %}
+       
     </div>
 
 </body>

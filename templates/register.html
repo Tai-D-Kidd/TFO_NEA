@@ -33,15 +33,7 @@
 
         <p>Already have an account? <a href="/">Login</a></p>
         
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <ul style="list-style: none; padding: 0; margin-top: 20px;">
-                    {% for msg in messages[-1:] %}
-                        <li style="background: #e0e5ec; padding: 12px; margin-bottom: 10px; border-radius: 12px; box-shadow: inset 6px 6px 12px #b8bec7, inset -6px -6px 12px #ffffff; color: #f44336;">{{ msg }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-        {% endwith %}
+        
     </div>
 
     <script>
