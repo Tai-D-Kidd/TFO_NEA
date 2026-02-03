@@ -102,3 +102,10 @@ new way to join private map -- with code
 logout button
 Potentially alliances
 
+
+level up options
+y2=0.01x
+
+
+((user.xp - (100 * ((user.level) **2)  | int)) // ((100 * ((user.level+1) **2)  | int) - (100 * ((user.level) **2)  | int)))*100 
+

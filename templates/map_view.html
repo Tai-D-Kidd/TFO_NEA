@@ -12,7 +12,7 @@
   <!-- Test Mode Indicator -->
   <div id="arrow-mode-indicator" style="display: none;"></div>
   
-  <!-- Game Ended Modal -->
+  <!-- Game Ended Mode -->
   <div id="gameEndedModal" class="modal" style="display: none;">
     <div class="modal-content">
       <h2>Game Over!</h2>
@@ -282,7 +282,7 @@ function enableArrowKeyMode() {
     if (arrowKeyMode) {
         console.log("Arrow key mode ON");
         indicator.style.display = 'block';
-        indicator.textContent = 'Test Mode: Use Arrow Keys';
+        indicator.textContent = 'Test Mode: Use WASD';
         indicator.style.background = '#4CAF50';
     } else {
         console.log("GPS mode ON");
@@ -314,19 +314,19 @@ document.addEventListener("keydown", e => {
         let newLon = currentLon;
         
         switch(e.key) {
-            case "ArrowUp":
+            case "w":
                 newLat += moveStep;
                 e.preventDefault();
                 break;
-            case "ArrowDown":
+            case "s":
                 newLat -= moveStep;
                 e.preventDefault();
                 break;
-            case "ArrowLeft":
+            case "a":
                 newLon -= moveStep;
                 e.preventDefault();
                 break;
-            case "ArrowRight":
+            case "d":
                 newLon += moveStep;
                 e.preventDefault();
                 break;

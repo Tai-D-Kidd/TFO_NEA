@@ -9,7 +9,10 @@
 
     <div class="wrapper">
 
-        <h1>Welcome, {{ user.username }}</h1>
+        <div class="header-container">
+            <h1>Welcome, {{ user.username }}</h1>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
 
         <div class="main-container">
             <!-- LEFT COLUMN: User Info & Friends -->
@@ -21,9 +24,9 @@
                         <div class="profile-name">{{ user.username }}</div>
                         <div class="level-badge" style="background: {{ user_color }};">Level {{ user.level }}</div>
                         <div class="xp-bar-container">
-                            <div class="xp-bar" style="width: {{ (user.xp % 100) }}%"></div>
+                            <div class="xp-bar" style="width: {{ ((user.xp - (100 * ((user.level) **2)))  /((100 * ((user.level+1) **2) - (100 * ((user.level) **2))     ))*100 | int )}}%"></div>
                         </div>
-                        <div class="xp-text">{{ user.xp % 100 }}/100 XP</div>
+                        <div class="xp-text">{{ user.xp - (100 * ((user.level) **2)  | int)}} // {{ (100 * ((user.level+1) **2)  | int) - (100 * ((user.level) **2)  | int)}}</div>
                     </div>
                 </div>
 

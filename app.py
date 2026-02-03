@@ -285,7 +285,7 @@ def name2color(name):
 
 #level calculation made a function so could change to exponential r curve for levels later so its harder to increase as you get to a higher level
 def calculate_level(xp):
-    return (xp // 100) + 1
+    return int(math.sqrt(0.01 * xp)) 
 
 def add_xp(user_id, xp_amount):
    
@@ -325,7 +325,7 @@ def home():
 
     return render_template('home.html')
 
-#-- 'late registration' - taiYelolu
+#-- 'late registration' - taiYelolu 
 @app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
@@ -1134,7 +1134,7 @@ def handle_disconnect():
 
 
 
-
+ 
 
 
 
