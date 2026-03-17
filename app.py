@@ -334,11 +334,16 @@ def register():
         
 
         # pwd reqs check
-
-        if len(password) < 8 or not re.search(r'[A-Z]', password) or \
-           not re.search(r'[a-z]', password) or not re.search(r'[0-9]', password):
+        if (
+            len(password) < 8 or
+            not re.search(r'[A-Z]', password) or
+            not re.search(r'[a-z]', password) or
+            not re.search(r'[0-9]', password) or
+            not re.search(r'[!@#$%^&*(),.?":{}|<>]', password)
+        ):
             flash('Password does not meet requirements')
             return redirect(url_for('register'))
+        
         
         result = db.session.execute(
             text(""" 
