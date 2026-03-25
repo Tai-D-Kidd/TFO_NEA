@@ -143,8 +143,7 @@ def check_win_condition(map_id):
     elif map_data.win_condition_type == 'time':
         # Check if time has elapsed
         if map_data.game_start_time:
-            for i in range(5):
-                print(".")
+            
             print(type(map_data.game_start_time))
             elapsed = datetime.now() - datetime.strptime(
     map_data.game_start_time,
@@ -491,7 +490,15 @@ def dashboard():
 
         # Joining an existing map by ID (public maps)
         if 'join_map_id' in request.form:
-            map_to_join = Maps_Data.query.get(int(request.form['join_map_id']))
+            map_to_join = db.session.execute(
+                text("""
+                    SELECT *
+                    FROM maps_data
+                    WHERE id = :map_id
+                    LIMIT 1
+                """),
+                {"map_id": int(request.form["join_map_id"])}
+            ).fetchone()
 
             # check if already in map
             userin = db.session.execute(
@@ -1144,4 +1151,4 @@ def handle_disconnect():
 
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    socketio.run(app, host="127.0.0.1", port=5001, debug=True)

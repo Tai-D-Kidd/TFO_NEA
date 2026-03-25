@@ -2,10 +2,40 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Your Maps</title>
+    <title>ANNEX -board</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
 </head>
 <body>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-container" id="flashContainer">
+                {% for category, message in messages %}
+                    {% if 'error' in category or 'invalid' in message|lower or 'already' in message|lower or 'ended' in message|lower %}
+                        {% set cls = 'flash-error' %}
+                        {% set icon = 'x' %}
+                    {% elif 'success' in category or 'successful' in message|lower or 'created' in message|lower or 'joined' in message|lower %}
+                        {% set cls = 'flash-success' %}
+                        {% set icon = '✓' %}
+                    {% else %}
+                        {% set cls = 'flash-info' %}
+                        {% set icon = 'i' %}
+                    {% endif %}
+                    <div class="flash {{ cls }}">
+                        <span class="flash-icon">{{ icon }}</span>
+                        <span>{{ message }}</span>
+                        <button class="flash-close" onclick="this.parentElement.remove()">x</button>
+                    </div>
+                {% endfor %}
+            </div>
+            <script>
+                setTimeout(() => {
+                    const c = document.getElementById('flashContainer');
+                    if (c) c.remove();
+                }, 4000);
+            </script>
+        {% endif %}
+    {% endwith %}
 
     <div class="wrapper">
 
@@ -47,7 +77,7 @@
                                 </div>
                                 <div class="friend-actions">
                                     <button class="accept-btn" onclick="acceptFriend({{ request.id }})">✓</button>
-                                    <button class="reject-btn" onclick="rejectFriend({{ request.id }})">✗</button>
+                                    <button class="reject-btn" onclick="rejectFriend({{ request.id }})">x</button>
                                 </div>
                             </li>
                             {% endfor %}
@@ -73,7 +103,7 @@
                     <!-- Add Friend Form -->
                     <div class="add-friend-form">
                         <input type="text" id="friendUsername" placeholder="Enter username">
-                        <button onclick="sendFriendRequest()">Add Friend</button>
+                        <button onclick="sendFriendRequest()">Add</button>
                     </div>
                 </div>
             </div>

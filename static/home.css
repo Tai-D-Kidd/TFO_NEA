@@ -47,3 +47,57 @@ h1 {
     box-shadow: inset 6px 6px 12px #b8bec7,
                 inset -6px -6px 12px #ffffff;
 }
+
+.flash-container {
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 9999;
+        width: max-content;
+        max-width: 90vw;
+    }
+
+.flash {
+    padding: 14px 24px;
+    border-radius: 14px;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: #444;
+    background: #e0e5ec;
+    box-shadow:
+        6px 6px 12px #b8bec7,
+        -6px -6px 12px #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: flash-in 0.25s ease-out;
+}
+
+.flash-success { border-left: 4px solid #4CAF50; }
+.flash-error   { border-left: 4px solid #f44336; }
+.flash-info    { border-left: 4px solid #5c7cfa; }
+
+.flash-icon { font-size: 18px; flex-shrink: 0; }
+
+.flash-close {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: #888;
+    padding: 0 0 0 12px;
+    box-shadow: none;
+    width: auto;
+}
+.flash-close:active { box-shadow: none; }
+
+@keyframes flash-in {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

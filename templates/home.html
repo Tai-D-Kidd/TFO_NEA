@@ -7,6 +7,38 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
 </head>
 <body>
+     {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-container" id="flashContainer">
+                {% for category, message in messages %}
+                    {% if 'error' in category or 'invalid' in message|lower or 'already' in message|lower %}
+                        {% set cls = 'flash-error' %}
+                        {% set icon = '✗' %}
+                    {% elif 'success' in category or 'successful' in message|lower %}
+                        {% set cls = 'flash-success' %}
+                        {% set icon = '✓' %}
+                    {% else %}
+                        {% set cls = 'flash-info' %}
+                        {% set icon = 'ℹ' %}
+                    {% endif %}
+                    <div class="flash {{ cls }}">
+                        <span class="flash-icon">{{ icon }}</span>
+                        <span>{{ message }}</span>
+                        <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+                    </div>
+                {% endfor %}
+            </div>
+            <script>
+                // Auto-dismiss after 4 seconds
+                setTimeout(() => {
+                    const c = document.getElementById('flashContainer');
+                    if (c) c.remove();
+                }, 4000);
+            </script>
+        {% endif %}
+    {% endwith %}
+
+
 
     <h1>ANNEX</h1>
 

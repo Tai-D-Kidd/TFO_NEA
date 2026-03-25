@@ -2,12 +2,43 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Login</title>
+    <title>ANNEX low-jin</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
 
 </head>
 <body>
+
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-container" id="flashContainer">
+                {% for category, message in messages %}
+                    {% if 'error' in category or 'invalid' in message|lower %}
+                        {% set cls = 'flash-error' %}
+                        {% set icon = 'x' %}
+                    {% elif 'success' in category or 'successful' in message|lower %}
+                        {% set cls = 'flash-success' %}
+                        {% set icon = '✓' %}
+                    {% else %}
+                        {% set cls = 'flash-info' %}
+                        {% set icon = 'i' %}
+                    {% endif %}
+                    <div class="flash {{ cls }}">
+                        <span class="flash-icon">{{ icon }}</span>
+                        <span>{{ message }}</span>
+                        <button class="flash-close" onclick="this.parentElement.remove()">x</button>
+                    </div>
+                {% endfor %}
+            </div>
+            <script>
+                setTimeout(() => {
+                    const c = document.getElementById('flashContainer');
+                    if (c) c.remove();
+                }, 4000);
+            </script>
+        {% endif %}
+    {% endwith %}
 
     <div class="container">
         <h2>Login</h2>
